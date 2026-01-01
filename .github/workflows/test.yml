@@ -24,12 +24,105 @@ jobs:
     - name: Run Unit Tests
       run: make test
 
+    - name: Verify Build
+      run: make build
+
+  # Integration tests using credential cache (kinit)
+  integration-ccache:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Install Kerberos tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y krb5-user
+
+    - name: Configure Kerberos
+      run: |
+        sudo tee /etc/krb5.conf << 'EOF'
+        [libdefaults]
+            default_realm = CERN.CH
+            dns_lookup_realm = false
+            dns_lookup_kdc = true
+            rdns = false
+            ticket_lifetime = 24h
+            forwardable = true
+            udp_preference_limit = 0
+            default_tgs_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+            default_tkt_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+            permitted_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+
+        [realms]
+            CERN.CH = {
+                kdc = cerndc.cern.ch
+                default_domain = cern.ch
+            }
+
+        [domain_realm]
+            .cern.ch = CERN.CH
+            cern.ch = CERN.CH
+        EOF
+
+    - name: Get Kerberos ticket via kinit
+      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
+      env:
+        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
+        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      run: |
+        echo "$KRB_PASSWORD" | kinit "${KRB_USERNAME}@CERN.CH"
+        klist
+
+    - name: Build
+      run: make build
+
+    - name: Test with credential cache (no password env vars)
+      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
+      env:
+        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
+        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      run: |
+        # Unset password env vars to ensure we use ccache
+        unset KRB_USERNAME KRB_PASSWORD
+        
+        # Test cookie command with ccache
+        ./cern-krb-cookie cookie --url https://gitlab.cern.ch --file test_cookies.txt
+        
+        # Verify cookies were created
+        if [ ! -f test_cookies.txt ]; then
+          echo "ERROR: Cookie file not created"
+          exit 1
+        fi
+        
+        echo "SUCCESS: Credential cache authentication works!"
+        cat test_cookies.txt
+
+  # Integration tests using password (fallback method)
+  integration-password:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Install dependencies
+      run: go mod download
+
     - name: Run Integration Tests
       if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
       env:
         KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
         KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
       run: make test-integration
-
-    - name: Verify Build
-      run: make build

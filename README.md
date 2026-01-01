@@ -33,7 +33,43 @@ Binaries will be placed in the `dist/` directory.
 
 ## Usage
 
-### Environment Variables
+### Authentication
+
+The tool supports two authentication methods, tried in this order:
+
+#### 1. Kerberos Credential Cache (Recommended for Linux)
+
+If you already have a valid Kerberos ticket (from `kinit`), the tool will use it automatically:
+
+```bash
+# Get a Kerberos ticket first
+kinit your-username@CERN.CH
+
+# Verify your ticket
+klist
+
+# Run the tool - no environment variables needed!
+./cern-krb-cookie cookie --url https://gitlab.cern.ch
+```
+
+**Linux:** Works automatically with the default credential cache (`/tmp/krb5cc_<UID>`).
+
+**macOS:** The default macOS credential cache uses an API-based storage (`API:xxx`) that is not directly accessible from Go. To use credential caching on macOS, you need to create a file-based cache:
+
+```bash
+# Create a file-based cache on macOS
+kinit -c /tmp/krb5cc_custom your-username@CERN.CH
+
+# Set the environment variable to use it
+export KRB5CCNAME=/tmp/krb5cc_custom
+
+# Now run the tool
+./cern-krb-cookie cookie --url https://gitlab.cern.ch
+```
+
+#### 2. Username/Password (Fallback)
+
+If no valid credential cache is found, set these environment variables:
 
 ```bash
 export KRB_USERNAME='your-cern-username'

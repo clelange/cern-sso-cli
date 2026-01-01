@@ -46,27 +46,38 @@ type KerberosClient struct {
 	jar        http.CookieJar
 }
 
-// NewKerberosClient creates a new Kerberos client using environment credentials.
+// NewKerberosClient creates a new Kerberos client.
+// It first attempts to use an existing credential cache (ccache), which works
+// on Linux and macOS with file-based caches. If no valid ccache is found,
+// it falls back to username/password authentication using KRB_USERNAME and
+// KRB_PASSWORD environment variables.
 func NewKerberosClient() (*KerberosClient, error) {
 	cfg, err := config.NewFromString(defaultKrb5Conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
 	}
 
-	// Try to use credential cache first
 	var cl *client.Client
-	ccachePath := os.Getenv("KRB5CCNAME")
-	if ccachePath == "" {
-		// Try default credential cache
-		ccachePath = "/tmp/krb5cc_" + os.Getenv("UID")
+
+	// Try credential cache first
+	cl, err = NewClientFromCCache(cfg)
+	if err == nil {
+		// Successfully loaded from ccache
+		return newKerberosClientFromKrbClient(cl)
 	}
 
-	// Try password-based login from environment
+	// Fall back to password-based login from environment
 	username := os.Getenv("KRB_USERNAME")
 	password := os.Getenv("KRB_PASSWORD")
 
 	if username == "" || password == "" {
-		return nil, fmt.Errorf("KRB_USERNAME and KRB_PASSWORD environment variables must be set")
+		// Provide helpful error message based on platform
+		if IsMacOSAPICCache() {
+			return nil, fmt.Errorf("no credential cache available. On macOS, either:\n" +
+				"  1. Set KRB5CCNAME to a file-based cache: kinit -c /tmp/krb5cc_custom && export KRB5CCNAME=/tmp/krb5cc_custom\n" +
+				"  2. Set KRB_USERNAME and KRB_PASSWORD environment variables")
+		}
+		return nil, fmt.Errorf("no credential cache found and KRB_USERNAME/KRB_PASSWORD not set")
 	}
 
 	cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
@@ -74,6 +85,11 @@ func NewKerberosClient() (*KerberosClient, error) {
 		return nil, fmt.Errorf("kerberos login failed: %w", err)
 	}
 
+	return newKerberosClientFromKrbClient(cl)
+}
+
+// newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
+func newKerberosClientFromKrbClient(cl *client.Client) (*KerberosClient, error) {
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
