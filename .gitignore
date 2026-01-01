@@ -1,0 +1,32 @@
+# Binaries
+cern-krb-cookie
+dist/
+
+# Environment variables
+.envrc
+.env
+
+# Cookies and test output
+*.txt
+!requirements.txt
+
+# Go
+view.sh
+*.out
+*.test
+*.prof
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
