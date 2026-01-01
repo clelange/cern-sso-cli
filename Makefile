@@ -1,5 +1,6 @@
 BINARY_NAME=cern-krb-cookie
-VERSION=0.1.0
+# Get version from git tag, or fallback to short hash + dirty flag
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 .PHONY: all build clean test-integration build-all
 
