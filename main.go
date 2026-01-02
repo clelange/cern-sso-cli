@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
@@ -185,6 +186,27 @@ func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 	}
 	targetDomain := u.Hostname()
 
+	// Check for user mismatch in existing cookie file (unless --force is used)
+	if krbUser != "" && !forceRefresh {
+		existingUser := cookie.LoadUser(filename)
+		if existingUser != "" {
+			// Normalize both usernames for comparison
+			requestedUser := krbUser
+			if !strings.Contains(requestedUser, "@") {
+				requestedUser = requestedUser + "@CERN.CH"
+			}
+			if strings.HasSuffix(strings.ToLower(requestedUser), "@cern.ch") {
+				parts := strings.Split(requestedUser, "@")
+				requestedUser = parts[0] + "@CERN.CH"
+			}
+
+			if existingUser != requestedUser {
+				log.Fatalf("Cookie file %s was created by user %s, but you requested user %s.\n"+
+					"Use --force to overwrite with the new user's cookies.", filename, existingUser, requestedUser)
+			}
+		}
+	}
+
 	// If force refresh is requested, skip validation and authenticate
 	if forceRefresh {
 		logPrintln("Force refresh requested. Authenticating regardless of existing cookies...")
@@ -350,7 +372,19 @@ func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost stri
 		return
 	}
 
-	if err := jar.Update(filename, cookies, u.Hostname()); err != nil {
+	// Normalize username for storage
+	username := krbUser
+	if username != "" {
+		if !strings.Contains(username, "@") {
+			username = username + "@CERN.CH"
+		}
+		if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
+			parts := strings.Split(username, "@")
+			username = parts[0] + "@CERN.CH"
+		}
+	}
+
+	if err := jar.UpdateWithUser(filename, cookies, u.Hostname(), username); err != nil {
 		logInfo("Warning: Failed to save cookies: %v", err)
 		return
 	}
