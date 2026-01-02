@@ -41,9 +41,10 @@ const defaultKrb5Conf = `[libdefaults]
 
 // KerberosClient handles Kerberos authentication.
 type KerberosClient struct {
-	krbClient  *client.Client
-	httpClient *http.Client
-	jar        http.CookieJar
+	krbClient        *client.Client
+	httpClient       *http.Client
+	jar              http.CookieJar
+	collectedCookies []*http.Cookie // Stores full cookie attributes from Set-Cookie headers
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -95,18 +96,51 @@ func newKerberosClientFromKrbClient(cl *client.Client) (*KerberosClient, error) 
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
 	}
 
+	kc := &KerberosClient{
+		krbClient:        cl,
+		jar:              jar,
+		collectedCookies: make([]*http.Cookie, 0),
+	}
+
+	// Create a custom transport that intercepts cookies from responses
+	transport := &cookieInterceptTransport{
+		base:   http.DefaultTransport,
+		client: kc,
+	}
+
 	httpClient := &http.Client{
-		Jar: jar,
+		Jar:       jar,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Don't follow redirects automatically
 		},
 	}
 
-	return &KerberosClient{
-		krbClient:  cl,
-		httpClient: httpClient,
-		jar:        jar,
-	}, nil
+	kc.httpClient = httpClient
+	return kc, nil
+}
+
+// cookieInterceptTransport wraps an http.RoundTripper to intercept Set-Cookie headers.
+type cookieInterceptTransport struct {
+	base   http.RoundTripper
+	client *KerberosClient
+}
+
+func (t *cookieInterceptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	// Capture full cookies from Set-Cookie headers
+	cookies := resp.Cookies()
+	for _, c := range cookies {
+		// Set domain from response URL if not set in cookie
+		if c.Domain == "" {
+			c.Domain = req.URL.Hostname()
+		}
+		t.client.collectedCookies = append(t.client.collectedCookies, c)
+	}
+	return resp, nil
 }
 
 // Close cleans up the Kerberos client.
@@ -129,6 +163,21 @@ func (k *KerberosClient) GetCookies(u *url.URL) []*http.Cookie {
 		}
 	}
 	return cookies
+}
+
+// GetCollectedCookies returns all cookies collected during the session with full attributes.
+func (k *KerberosClient) GetCollectedCookies() []*http.Cookie {
+	// Deduplicate by domain+path+name, keeping the latest
+	seen := make(map[string]*http.Cookie)
+	for _, c := range k.collectedCookies {
+		key := c.Domain + c.Path + c.Name
+		seen[key] = c
+	}
+	result := make([]*http.Cookie, 0, len(seen))
+	for _, c := range seen {
+		result = append(result, c)
+	}
+	return result
 }
 
 // DoSPNEGO performs an HTTP GET request with SPNEGO authentication.
@@ -407,40 +456,19 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	}, nil
 }
 
-// CollectCookies collects all cookies from the session, including auth domain cookies.
+// CollectCookies collects all cookies from the session with full attributes.
+// This uses cookies intercepted from Set-Cookie headers during the authentication flow,
+// which preserves the original Path and Domain attributes.
 func (k *KerberosClient) CollectCookies(targetURL string, authHostname string, result *LoginResult) ([]*http.Cookie, error) {
-	var allCookies []*http.Cookie
-	allCookies = append(allCookies, result.Cookies...)
-
-	// Collect cookies from auth domain
-	authURL := &url.URL{Scheme: "https", Host: authHostname, Path: "/"}
-	allCookies = append(allCookies, k.GetCookies(authURL)...)
-
+	// Make a final request to the target to collect any remaining cookies
 	if result.RedirectURI != "" {
 		resp, err := k.httpClient.Get(result.RedirectURI)
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
 		defer resp.Body.Close()
-
-		u, _ := url.Parse(result.RedirectURI)
-		allCookies = append(allCookies, k.GetCookies(u)...)
 	}
 
-	// Make a final request to the target to collect any remaining cookies
-	u, _ := url.Parse(targetURL)
-	allCookies = append(allCookies, k.GetCookies(u)...)
-
-	// Deduplicate cookies by domain+path+name
-	seen := make(map[string]bool)
-	var uniqueCookies []*http.Cookie
-	for _, c := range allCookies {
-		key := c.Domain + c.Path + c.Name
-		if !seen[key] {
-			seen[key] = true
-			uniqueCookies = append(uniqueCookies, c)
-		}
-	}
-
-	return uniqueCookies, nil
+	// Return all cookies collected during the session
+	return k.GetCollectedCookies(), nil
 }
