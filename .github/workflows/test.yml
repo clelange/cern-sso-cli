@@ -126,3 +126,89 @@ jobs:
         KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
         KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
       run: make test-integration
+
+  # Unit tests on macOS
+  test-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+        cache: true
+    - run: go mod download
+    - run: make test
+    - run: make build
+
+  # Integration tests on macOS with API cache conversion
+  integration-macos:
+    runs-on: macos-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+        cache: true
+
+    - name: Configure Kerberos
+      run: |
+        sudo tee /etc/krb5.conf << 'EOF'
+        [libdefaults]
+            default_realm = CERN.CH
+            dns_lookup_realm = false
+            dns_lookup_kdc = true
+            rdns = false
+            ticket_lifetime = 24h
+            forwardable = true
+            udp_preference_limit = 0
+            default_tgs_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+            default_tkt_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+            permitted_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+
+        [realms]
+            CERN.CH = {
+                kdc = cerndc.cern.ch
+                default_domain = cern.ch
+            }
+
+        [domain_realm]
+            .cern.ch = CERN.CH
+            cern.ch = CERN.CH
+        EOF
+
+    - name: Get Kerberos ticket (creates API cache by default on macOS)
+      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
+      env:
+        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
+        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      run: |
+        echo "$KRB_PASSWORD" | kinit "${KRB_USERNAME}@CERN.CH"
+        echo "=== Kerberos ticket (should show API: cache type) ==="
+        klist
+
+    - name: Build
+      run: make build
+
+    - name: Test with API cache (automatic conversion)
+      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
+      env:
+        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
+        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      run: |
+        # Unset password env vars to ensure we use ccache
+        unset KRB_USERNAME KRB_PASSWORD
+
+        # This should auto-convert API cache to file cache
+        ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
+
+        # Verify cookies were created
+        if [ ! -f test_cookies.txt ]; then
+          echo "ERROR: Cookie file not created"
+          exit 1
+        fi
+
+        echo "SUCCESS: macOS API cache conversion works!"
+        cat test_cookies.txt

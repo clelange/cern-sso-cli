@@ -126,6 +126,17 @@ func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient
 		return newKerberosClientFromKrbClient(cl, version)
 	}
 
+	// On macOS, try to convert API cache to file cache
+	if IsMacOSAPICCache() {
+		if filePath, convErr := ConvertAPICacheToFile(); convErr == nil {
+			os.Setenv("KRB5CCNAME", filePath)
+			cl, err = NewClientFromCCache(cfg)
+			if err == nil {
+				return newKerberosClientFromKrbClient(cl, version)
+			}
+		}
+	}
+
 	// Fall back to password-based login from environment
 	username := os.Getenv("KRB_USERNAME")
 	password := os.Getenv("KRB_PASSWORD")
@@ -134,8 +145,9 @@ func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient
 		// Provide helpful error message based on platform
 		if IsMacOSAPICCache() {
 			return nil, fmt.Errorf("no credential cache available. On macOS, either:\n" +
-				"  1. Set KRB5CCNAME to a file-based cache: kinit -c /tmp/krb5cc_custom && export KRB5CCNAME=/tmp/krb5cc_custom\n" +
-				"  2. Set KRB_USERNAME and KRB_PASSWORD environment variables")
+				"  1. Set up keychain: kinit --keychain your-username@CERN.CH (one-time setup)\n" +
+				"  2. Create file cache: kinit -c /tmp/krb5cc_custom && export KRB5CCNAME=/tmp/krb5cc_custom\n" +
+				"  3. Set KRB_USERNAME and KRB_PASSWORD environment variables")
 		}
 		return nil, fmt.Errorf("no credential cache found and KRB_USERNAME/KRB_PASSWORD not set")
 	}

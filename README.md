@@ -56,16 +56,23 @@ klist
 
 **Linux:** Works automatically with the default credential cache (`/tmp/krb5cc_<UID>`).
 
-**macOS:** The default macOS credential cache uses an API-based storage (`API:xxx`) that is not directly accessible from Go. To use credential caching on macOS, you need to create a file-based cache:
+**macOS:** The default macOS credential cache uses an API-based storage (`API:xxx`). The tool can **automatically convert** this to a file-based cache, but requires one-time keychain setup:
 
 ```bash
-# Create a file-based cache on macOS
+# One-time setup: save password to macOS Keychain
+kinit --keychain your-username@CERN.CH
+
+# Now the tool works automatically
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+The tool uses `kinit --keychain` internally to create a file cache from your keychain-stored password.
+
+**Alternative:** If you prefer not to use keychain, manually create a file-based cache:
+
+```bash
 kinit -c /tmp/krb5cc_custom your-username@CERN.CH
-
-# Set the environment variable to use it
 export KRB5CCNAME=/tmp/krb5cc_custom
-
-# Now run the tool
 ./cern-sso-cli cookie --url https://gitlab.cern.ch
 ```
 

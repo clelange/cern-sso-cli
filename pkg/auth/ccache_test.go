@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +64,40 @@ func TestGetUID(t *testing.T) {
 	uid := getUID()
 	if uid == "" {
 		t.Error("Expected non-empty UID")
+	}
+}
+
+func TestConvertAPICacheToFile_NotMacOS(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("Skipping on macOS - this test is for non-macOS platforms")
+	}
+
+	// On non-macOS, should return error because IsMacOSAPICCache returns false
+	_, err := ConvertAPICacheToFile()
+	if err == nil {
+		t.Error("Expected error on non-macOS platform")
+	}
+	if !strings.Contains(err.Error(), "not using macOS API cache") {
+		t.Errorf("Expected 'not using macOS API cache' error, got: %v", err)
+	}
+}
+
+func TestConvertAPICacheToFile_WithFileCache(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Skipping on non-macOS - testing file cache detection on darwin")
+	}
+
+	// Save and restore original env
+	original := os.Getenv("KRB5CCNAME")
+	defer os.Setenv("KRB5CCNAME", original)
+
+	// Set a file-based cache - should not attempt conversion
+	os.Setenv("KRB5CCNAME", "/tmp/krb5cc_test_file")
+	_, err := ConvertAPICacheToFile()
+	if err == nil {
+		t.Error("Expected error when already using file-based cache")
+	}
+	if !strings.Contains(err.Error(), "not using macOS API cache") {
+		t.Errorf("Expected 'not using macOS API cache' error, got: %v", err)
 	}
 }
