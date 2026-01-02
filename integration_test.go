@@ -40,7 +40,7 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	cookies, err := kerbClient.CollectCookies(targetURL, result)
+	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
 	if err != nil {
 		t.Fatalf("Failed to collect cookies: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 		t.Fatalf("Account login failed: %v", err)
 	}
 
-	accountCookies, err := kerbClient.CollectCookies(accountURL, result)
+	accountCookies, err := kerbClient.CollectCookies(accountURL, authHost, result)
 	if err != nil {
 		t.Fatalf("Failed to collect account cookies: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 		t.Fatalf("GitLab login failed: %v", err)
 	}
 
-	gitlabCookies, err := kerbClient2.CollectCookies(gitlabURL, result)
+	gitlabCookies, err := kerbClient2.CollectCookies(gitlabURL, authHost, result)
 	if err != nil {
 		t.Fatalf("Failed to collect GitLab cookies: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestIntegration_GitLabCERN(t *testing.T) {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	cookies, err := kerbClient.CollectCookies(targetURL, result)
+	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
 	if err != nil {
 		t.Fatalf("Failed to collect cookies: %v", err)
 	}

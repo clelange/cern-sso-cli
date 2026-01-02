@@ -150,7 +150,7 @@ func saveCookie(targetURL, filename, authHost string) {
 	}
 
 	log.Println("Collecting cookies...")
-	cookies, err := kerbClient.CollectCookies(targetURL, result)
+	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
 	if err != nil {
 		log.Fatalf("Failed to collect cookies: %v", err)
 	}

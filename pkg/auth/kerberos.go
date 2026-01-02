@@ -120,8 +120,15 @@ func (k *KerberosClient) GetHTTPClient() *http.Client {
 }
 
 // GetCookies returns all cookies from the jar for a given URL.
+// It ensures the Domain field is populated if empty (Go's cookiejar doesn't populate it).
 func (k *KerberosClient) GetCookies(u *url.URL) []*http.Cookie {
-	return k.jar.Cookies(u)
+	cookies := k.jar.Cookies(u)
+	for _, c := range cookies {
+		if c.Domain == "" {
+			c.Domain = u.Hostname()
+		}
+	}
+	return cookies
 }
 
 // DoSPNEGO performs an HTTP GET request with SPNEGO authentication.
@@ -400,10 +407,14 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	}, nil
 }
 
-// CollectCookies collects all cookies from the session.
-func (k *KerberosClient) CollectCookies(targetURL string, result *LoginResult) ([]*http.Cookie, error) {
+// CollectCookies collects all cookies from the session, including auth domain cookies.
+func (k *KerberosClient) CollectCookies(targetURL string, authHostname string, result *LoginResult) ([]*http.Cookie, error) {
 	var allCookies []*http.Cookie
 	allCookies = append(allCookies, result.Cookies...)
+
+	// Collect cookies from auth domain
+	authURL := &url.URL{Scheme: "https", Host: authHostname, Path: "/"}
+	allCookies = append(allCookies, k.GetCookies(authURL)...)
 
 	if result.RedirectURI != "" {
 		resp, err := k.httpClient.Get(result.RedirectURI)
@@ -420,7 +431,7 @@ func (k *KerberosClient) CollectCookies(targetURL string, result *LoginResult) (
 	u, _ := url.Parse(targetURL)
 	allCookies = append(allCookies, k.GetCookies(u)...)
 
-	// Deduplicate cookies by name
+	// Deduplicate cookies by domain+path+name
 	seen := make(map[string]bool)
 	var uniqueCookies []*http.Cookie
 	for _, c := range allCookies {
