@@ -2,6 +2,7 @@ package cookie
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -50,7 +51,7 @@ func FilterAuthCookies(cookies []*http.Cookie, authHost string) []*http.Cookie {
 
 // VerifyCookies checks if cookies are valid for the target URL.
 // Returns (valid, remainingDuration) tuple.
-func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, time.Duration) {
+func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie, verifyCert bool) (bool, time.Duration) {
 	u, err := url.Parse(targetURL)
 	if err != nil {
 		return false, 0
@@ -74,6 +75,9 @@ func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, ti
 
 	client := &http.Client{
 		Jar: jar,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert},
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host == authHost {
 				return http.ErrUseLastResponse

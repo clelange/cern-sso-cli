@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -111,8 +112,8 @@ type KerberosClient struct {
 // it falls back to username/password authentication using KRB_USERNAME and
 // KRB_PASSWORD environment variables.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
-func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient, error) {
-	return NewKerberosClientWithUser(version, krb5ConfigSource, "")
+func NewKerberosClient(version string, krb5ConfigSource string, verifyCert bool) (*KerberosClient, error) {
+	return NewKerberosClientWithUser(version, krb5ConfigSource, "", verifyCert)
 }
 
 // NewKerberosClientWithUser creates a new Kerberos client, optionally for a specific user.
@@ -121,7 +122,7 @@ func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient
 // the @CERN.CH suffix (e.g., "clange" or "clange@CERN.CH").
 // If no matching cache is found but KRB_PASSWORD is set, password-based auth is used.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
-func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string) (*KerberosClient, error) {
+func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string, verifyCert bool) (*KerberosClient, error) {
 	cfg, err := LoadKrb5Config(krb5ConfigSource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
@@ -139,7 +140,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 				os.Setenv("KRB5CCNAME", filePath)
 				cl, err = NewClientFromCCache(cfg)
 				if err == nil {
-					return newKerberosClientFromKrbClient(cl, version)
+					return newKerberosClientFromKrbClient(cl, version, verifyCert)
 				}
 			}
 		}
@@ -154,7 +155,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 			}
 			cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
 			if loginErr := cl.Login(); loginErr == nil {
-				return newKerberosClientFromKrbClient(cl, version)
+				return newKerberosClientFromKrbClient(cl, version, verifyCert)
 			} else {
 				return nil, fmt.Errorf("kerberos login failed for %s: %w", krbUsername, loginErr)
 			}
@@ -177,7 +178,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 			}
 			cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
 			if loginErr := cl.Login(); loginErr == nil {
-				return newKerberosClientFromKrbClient(cl, version)
+				return newKerberosClientFromKrbClient(cl, version, verifyCert)
 			} else {
 				return nil, fmt.Errorf("kerberos login failed for %s: %w", krbUsername, loginErr)
 			}
@@ -188,7 +189,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 	cl, err = NewClientFromCCache(cfg)
 	if err == nil {
 		// Successfully loaded from ccache
-		return newKerberosClientFromKrbClient(cl, version)
+		return newKerberosClientFromKrbClient(cl, version, verifyCert)
 	}
 
 	// On macOS, try to convert API cache to file cache
@@ -197,7 +198,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 			os.Setenv("KRB5CCNAME", filePath)
 			cl, err = NewClientFromCCache(cfg)
 			if err == nil {
-				return newKerberosClientFromKrbClient(cl, version)
+				return newKerberosClientFromKrbClient(cl, version, verifyCert)
 			}
 		}
 	}
@@ -222,11 +223,11 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 		return nil, fmt.Errorf("kerberos login failed: %w", err)
 	}
 
-	return newKerberosClientFromKrbClient(cl, version)
+	return newKerberosClientFromKrbClient(cl, version, verifyCert)
 }
 
 // newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
-func newKerberosClientFromKrbClient(cl *client.Client, version string) (*KerberosClient, error) {
+func newKerberosClientFromKrbClient(cl *client.Client, version string, verifyCert bool) (*KerberosClient, error) {
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
@@ -240,14 +241,16 @@ func newKerberosClientFromKrbClient(cl *client.Client, version string) (*Kerbero
 	}
 
 	// Create a custom transport that intercepts cookies from responses
-	transport := &cookieInterceptTransport{
-		base:   http.DefaultTransport,
+	customTransport := &cookieInterceptTransport{
+		base: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert},
+		},
 		client: kc,
 	}
 
 	httpClient := &http.Client{
 		Jar:       jar,
-		Transport: transport,
+		Transport: customTransport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Don't follow redirects automatically
 		},

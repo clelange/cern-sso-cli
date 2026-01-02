@@ -31,7 +31,7 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 	defer os.Remove(cookieFile)
 
 	// Test cookie generation
-	kerbClient, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
 	authHost := "auth.cern.ch"
 
-	kerbClient, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	// Now authenticate to gitlab.cern.ch with a fresh client
 	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
 
-	kerbClient2, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient2, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create second Kerberos client: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestIntegration_CookieReuse(t *testing.T) {
 	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
 	authHost := "auth.cern.ch"
 
-	kerbClient, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestIntegration_CookieReuse(t *testing.T) {
 	// if they exist and are valid
 	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
 
-	kerbClient2, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient2, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create second Kerberos client: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestIntegration_GitLabCERN(t *testing.T) {
 	defer os.Remove(cookieFile)
 
 	// Test cookie generation
-	kerbClient, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 		VerifyCert:   true,
 	}
 
-	kerbClient, err := auth.NewKerberosClient(testVersion, "")
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -323,12 +323,34 @@ func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 }
 
 func TestIntegration_InvalidCredentials(t *testing.T) {
-	// Set wrong password
+	// Set wrong password and dummy username to force password-based auth
+	originalUser := os.Getenv("KRB_USERNAME")
 	originalPassword := os.Getenv("KRB_PASSWORD")
-	os.Setenv("KRB_PASSWORD", "wrong-password")
-	defer os.Setenv("KRB_PASSWORD", originalPassword)
+	originalCCache := os.Getenv("KRB5CCNAME")
 
-	_, err := auth.NewKerberosClient(testVersion, "")
+	os.Setenv("KRB_USERNAME", "testuser")
+	os.Setenv("KRB_PASSWORD", "wrong-password")
+	os.Setenv("KRB5CCNAME", "/tmp/non-existent-ccache-path")
+
+	defer func() {
+		if originalUser != "" {
+			os.Setenv("KRB_USERNAME", originalUser)
+		} else {
+			os.Unsetenv("KRB_USERNAME")
+		}
+		if originalPassword != "" {
+			os.Setenv("KRB_PASSWORD", originalPassword)
+		} else {
+			os.Unsetenv("KRB_PASSWORD")
+		}
+		if originalCCache != "" {
+			os.Setenv("KRB5CCNAME", originalCCache)
+		} else {
+			os.Unsetenv("KRB5CCNAME")
+		}
+	}()
+
+	_, err := auth.NewKerberosClient(testVersion, "", true)
 	if err == nil {
 		t.Fatal("Expected error with invalid credentials, got nil")
 	}

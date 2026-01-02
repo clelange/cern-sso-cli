@@ -104,7 +104,7 @@ func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test")
+	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
 
 	result, err := kc.TryLoginWithCookies("https://example.com", "auth.example.com", nil)
 
@@ -125,7 +125,7 @@ func TestTryLoginWithCookies_InvalidRedirect(t *testing.T) {
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test")
+	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
 
 	// Create a mock server that redirects to auth (simulating invalid cookies)
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,7 @@ func TestTryLoginWithCookies_Success(t *testing.T) {
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test")
+	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
 
 	// Create a mock server that returns success (valid cookies)
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +189,7 @@ func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test")
+	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
 
 	// Create a mock server that verifies cookies are received
 	cookiesReceived := make([]string, 0)
@@ -249,7 +249,7 @@ func TestTryLoginWithCookies_DomainFixing(t *testing.T) {
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test")
+	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
 
 	// Create a mock server
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
