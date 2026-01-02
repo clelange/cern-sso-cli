@@ -28,6 +28,7 @@ func main() {
 	cookieCmd := flag.NewFlagSet("cookie", flag.ExitOnError)
 	tokenCmd := flag.NewFlagSet("token", flag.ExitOnError)
 	deviceCmd := flag.NewFlagSet("device", flag.ExitOnError)
+	statusCmd := flag.NewFlagSet("status", flag.ExitOnError)
 
 	// Cookie command flags
 	cookieURL := cookieCmd.String("url", "", "URL to authenticate against")
@@ -44,6 +45,10 @@ func main() {
 	deviceClientID := deviceCmd.String("client-id", "", "OAuth client ID")
 	deviceAuthHost := deviceCmd.String("auth-host", defaultAuthHostname, "Authentication hostname")
 	deviceAuthRealm := deviceCmd.String("realm", defaultAuthRealm, "Authentication realm")
+
+	// Status command flags
+	statusFile := statusCmd.String("file", "cookies.txt", "Cookie file to check")
+	statusJSON := statusCmd.Bool("json", false, "Output as JSON")
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -78,6 +83,14 @@ func main() {
 		}
 		deviceLogin(*deviceClientID, *deviceAuthHost, *deviceAuthRealm)
 
+	case "status":
+		statusCmd.Parse(os.Args[2:])
+		cookies, err := cookie.Load(*statusFile)
+		if err != nil {
+			log.Fatalf("Failed to load cookies from %s: %v", *statusFile, err)
+		}
+		cookie.PrintStatus(cookies, *statusJSON, os.Stdout)
+
 	default:
 		printUsage()
 		os.Exit(1)
@@ -91,6 +104,7 @@ func printUsage() {
 	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch]")
 	fmt.Println("  cern-sso-cli token --url <URL> --client-id <ID> [--realm cern]")
 	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern]")
+	fmt.Println("  cern-sso-cli status [--file cookies.txt] [--json]")
 	fmt.Println()
 	fmt.Println("Environment variables:")
 	fmt.Println("  KRB_USERNAME  Kerberos username")

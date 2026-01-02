@@ -5,6 +5,7 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 ## Features
 
 - Save SSO session cookies for use with curl, wget, etc.
+- Check cookie validity and expiration status
 - Get OIDC access tokens via Authorization Code flow
 - Device Authorization Grant flow for headless environments
 
@@ -108,6 +109,26 @@ For environments without Kerberos, use Device Authorization Grant:
 ./cern-sso-cli device --client-id your-client-id
 ```
 
+### Check Cookie Status
+
+Display the validity and expiration information of stored cookies:
+
+```bash
+./cern-sso-cli status [--file cookies.txt] [--json]
+```
+
+Shows:
+- Cookie name, domain, and path
+- Expiration date/time
+- Status: ✓ Valid, ✗ Expired, or Session
+- Remaining time for valid cookies
+- Security flags: [S] for Secure, [H] for HttpOnly
+
+Use `--json` flag for machine-readable output:
+```bash
+./cern-sso-cli status --json
+```
+
 ## Options
 
 ### Cookie Command
@@ -134,6 +155,13 @@ For environments without Kerberos, use Device Authorization Grant:
 | `--client-id` | (required) | OAuth client ID |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
 | `--realm` | `cern` | Keycloak realm |
+
+### Status Command
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | `cookies.txt` | Cookie file to check |
+| `--json` | `false` | Output as JSON instead of table format |
 
 ## Requirements
 
