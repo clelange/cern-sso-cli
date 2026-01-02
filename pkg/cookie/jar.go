@@ -270,8 +270,6 @@ func (j *Jar) Update(filename string, newCookies []*http.Cookie, domain string) 
 	for _, c := range existing {
 		if c.Expires.After(now) || c.Expires.IsZero() {
 			cookieMap[getKey(c)] = c
-		} else {
-			fmt.Printf("Removing expired cookie: %s (expired %s)\n", c.Name, c.Expires)
 		}
 	}
 

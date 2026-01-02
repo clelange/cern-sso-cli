@@ -118,6 +118,8 @@ Display the validity and expiration information of stored cookies:
 ./cern-sso-cli status [--file cookies.txt] [--json]
 ```
 
+In quiet mode (`--quiet`), exits with code 0 if any valid cookies exist, 1 otherwise.
+
 Shows:
 - Cookie name, domain, and path
 - Expiration date/time
@@ -130,7 +132,11 @@ Use `--json` flag for machine-readable output:
 ./cern-sso-cli status --json
 ```
 
-## Options
+### Global Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
 
 ### Cookie Command
 

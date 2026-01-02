@@ -20,6 +20,7 @@ type OIDCConfig struct {
 	ClientID     string
 	RedirectURI  string
 	VerifyCert   bool
+	Quiet        bool
 }
 
 // TokenResponse represents an OIDC token response.
@@ -132,13 +133,15 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 		return nil, err
 	}
 
-	// Print instructions
+	// Print instructions (even in quiet mode - user needs them to complete auth)
 	fmt.Println("CERN Single Sign-On")
 	fmt.Println()
 	fmt.Printf("On your tablet, phone or computer, go to:\n    %s\n", deviceResp.VerificationURI)
 	fmt.Printf("and enter the following code:\n    %s\n\n", deviceResp.UserCode)
 	fmt.Printf("You may also open the following link directly:\n    %s\n\n", deviceResp.VerificationURIComplete)
-	fmt.Println("Waiting for login...")
+	if !cfg.Quiet {
+		fmt.Println("Waiting for login...")
+	}
 
 	// Set up polling with timeout
 	tokenURL := fmt.Sprintf(

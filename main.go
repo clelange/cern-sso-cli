@@ -22,7 +22,31 @@ const (
 // version is set at build time via ldflags
 var version = "dev"
 
+var quiet bool
+
+func logInfo(format string, args ...interface{}) {
+	if !quiet {
+		log.Printf(format, args...)
+	}
+}
+
+func logPrintln(args ...interface{}) {
+	if !quiet {
+		log.Println(args...)
+	}
+}
+
 func main() {
+	// Check for --quiet flag first (can appear anywhere in args)
+	for i, arg := range os.Args {
+		if arg == "--quiet" || arg == "-q" {
+			quiet = true
+			// Remove the flag from args so it doesn't interfere with subcommand parsing
+			os.Args = append(os.Args[:i], os.Args[i+1:]...)
+			break
+		}
+	}
+
 	// Subcommands
 	cookieCmd := flag.NewFlagSet("cookie", flag.ExitOnError)
 	tokenCmd := flag.NewFlagSet("token", flag.ExitOnError)
@@ -57,7 +81,9 @@ func main() {
 
 	// Handle version flag
 	if os.Args[1] == "--version" || os.Args[1] == "-v" || os.Args[1] == "version" {
-		fmt.Printf("cern-sso-cli version %s\n", version)
+		if !quiet {
+			fmt.Printf("cern-sso-cli version %s\n", version)
+		}
 		os.Exit(0)
 	}
 
@@ -89,6 +115,23 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to load cookies from %s: %v", *statusFile, err)
 		}
+
+		if quiet {
+			// In quiet mode, exit with code based on cookie validity
+			now := time.Now()
+			hasValidCookies := false
+			for _, c := range cookies {
+				if c.Expires.IsZero() || c.Expires.After(now) {
+					hasValidCookies = true
+					break
+				}
+			}
+			if hasValidCookies {
+				os.Exit(0)
+			} else {
+				os.Exit(1)
+			}
+		}
 		cookie.PrintStatus(cookies, *statusJSON, os.Stdout)
 
 	default:
@@ -98,6 +141,9 @@ func main() {
 }
 
 func printUsage() {
+	if quiet {
+		return
+	}
 	fmt.Println("CERN SSO Authentication Tool")
 	fmt.Println()
 	fmt.Println("Usage:")
@@ -121,14 +167,14 @@ func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 
 	// If force refresh is requested, skip validation and authenticate
 	if forceRefresh {
-		log.Println("Force refresh requested. Authenticating regardless of existing cookies...")
+		logPrintln("Force refresh requested. Authenticating regardless of existing cookies...")
 		// Clean up expired cookies before authentication
 		jar, err := cookie.NewJar()
 		if err != nil {
-			log.Printf("Warning: Failed to create cookie jar: %v", err)
+			logInfo("Warning: Failed to create cookie jar: %v", err)
 		} else {
 			if err := jar.Update(filename, nil, targetDomain); err != nil {
-				log.Printf("Warning: Failed to cleanup cookies: %v", err)
+				logInfo("Warning: Failed to cleanup cookies: %v", err)
 			}
 		}
 		authenticateWithKerberos(targetURL, filename, authHost)
@@ -140,13 +186,13 @@ func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 		// First, try auth.cern.ch cookies
 		authCookies := cookie.FilterAuthCookies(existing, authHost)
 		if len(authCookies) > 0 {
-			log.Printf("Found %d auth.cern.ch cookies, attempting to use them...", len(authCookies))
+			logInfo("Found %d auth.cern.ch cookies, attempting to use them...", len(authCookies))
 			if ok, result, client := tryAuthCookies(targetURL, authHost, authCookies); ok {
-				log.Println("Existing auth cookies worked. Skipping Kerberos authentication.")
+				logPrintln("Existing auth cookies worked. Skipping Kerberos authentication.")
 				saveCookies(client, filename, targetURL, authHost, result)
 				return
 			}
-			log.Println("Auth cookies invalid or expired, falling back to Kerberos...")
+			logPrintln("Auth cookies invalid or expired, falling back to Kerberos...")
 		}
 
 		// Then try cookies that match the target domain
@@ -158,23 +204,23 @@ func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 		}
 
 		if len(domainCookies) > 0 {
-			log.Printf("Checking validity of %d existing cookies for %s...", len(domainCookies), targetDomain)
+			logInfo("Checking validity of %d existing cookies for %s...", len(domainCookies), targetDomain)
 			if valid, duration := cookie.VerifyCookies(targetURL, authHost, domainCookies); valid {
-				log.Printf("Existing cookies are valid for another %v. Reusing them.", formatDuration(duration))
+				logInfo("Existing cookies are valid for another %v. Reusing them.", formatDuration(duration))
 				jar, err := cookie.NewJar()
 				if err != nil {
-					log.Printf("Warning: Failed to create cookie jar: %v", err)
+					logInfo("Warning: Failed to create cookie jar: %v", err)
 					return
 				}
 				// Clean up expired ones
 				if err := jar.Update(filename, nil, targetDomain); err != nil {
-					log.Printf("Warning: Failed to cleanup cookies: %v", err)
+					logInfo("Warning: Failed to cleanup cookies: %v", err)
 				}
 				return
 			}
-			log.Println("Cookies expired or invalid. Authenticating...")
+			logPrintln("Cookies expired or invalid. Authenticating...")
 		} else {
-			log.Printf("No existing cookies for %s. Authenticating...", targetDomain)
+			logInfo("No existing cookies for %s. Authenticating...", targetDomain)
 		}
 	}
 
@@ -200,7 +246,7 @@ func formatDuration(d time.Duration) string {
 }
 
 func getToken(redirectURL, clientID, authHost, realm string) {
-	log.Println("Initializing Kerberos client...")
+	logPrintln("Initializing Kerberos client...")
 	kerbClient, err := auth.NewKerberosClient(version)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
@@ -213,9 +259,10 @@ func getToken(redirectURL, clientID, authHost, realm string) {
 		ClientID:     clientID,
 		RedirectURI:  redirectURL,
 		VerifyCert:   true,
+		Quiet:        quiet,
 	}
 
-	log.Println("Getting access token...")
+	logPrintln("Getting access token...")
 	token, err := auth.AuthorizationCodeFlow(kerbClient, cfg)
 	if err != nil {
 		log.Fatalf("Failed to get token: %v", err)
@@ -230,6 +277,7 @@ func deviceLogin(clientID, authHost, realm string) {
 		AuthRealm:    realm,
 		ClientID:     clientID,
 		VerifyCert:   true,
+		Quiet:        quiet,
 	}
 
 	token, err := auth.DeviceAuthorizationFlow(cfg)
@@ -250,7 +298,7 @@ func deviceLogin(clientID, authHost, realm string) {
 func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, *auth.LoginResult, *auth.KerberosClient) {
 	kerbClient, err := auth.NewKerberosClient(version)
 	if err != nil {
-		log.Printf("Warning: Failed to create Kerberos client for cookie attempt: %v", err)
+		logInfo("Warning: Failed to create Kerberos client for cookie attempt: %v", err)
 		return false, nil, nil
 	}
 
@@ -266,40 +314,40 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, *
 
 // saveCookies collects and saves cookies from a successful authentication.
 func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult) {
-	log.Println("Collecting cookies...")
+	logPrintln("Collecting cookies...")
 	cookies, err := client.CollectCookies(targetURL, authHost, result)
 	client.Close()
 	if err != nil {
-		log.Printf("Warning: Failed to collect cookies: %v", err)
+		logInfo("Warning: Failed to collect cookies: %v", err)
 		return
 	}
 
 	u, _ := url.Parse(targetURL)
-	log.Printf("Saving %d cookies to %s\n", len(cookies), filename)
+	logInfo("Saving %d cookies to %s\n", len(cookies), filename)
 	jar, err := cookie.NewJar()
 	if err != nil {
-		log.Printf("Warning: Failed to create cookie jar: %v", err)
+		logInfo("Warning: Failed to create cookie jar: %v", err)
 		return
 	}
 
 	if err := jar.Update(filename, cookies, u.Hostname()); err != nil {
-		log.Printf("Warning: Failed to save cookies: %v", err)
+		logInfo("Warning: Failed to save cookies: %v", err)
 		return
 	}
 
-	log.Println("Done!")
+	logPrintln("Done!")
 }
 
 // authenticateWithKerberos performs full Kerberos authentication flow.
 func authenticateWithKerberos(targetURL, filename, authHost string) {
-	log.Println("Initializing Kerberos client...")
+	logPrintln("Initializing Kerberos client...")
 	kerbClient, err := auth.NewKerberosClient(version)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
 	defer kerbClient.Close()
 
-	log.Println("Logging in with Kerberos...")
+	logPrintln("Logging in with Kerberos...")
 	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
 	if err != nil {
 		log.Fatalf("Login failed: %v", err)
