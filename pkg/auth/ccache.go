@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
@@ -104,4 +105,56 @@ func IsMacOSAPICCache() bool {
 	ccachePath := os.Getenv("KRB5CCNAME")
 	// If not set, macOS defaults to API cache
 	return ccachePath == "" || strings.HasPrefix(ccachePath, "API:")
+}
+
+// GetPrincipalFromKlist parses the principal from klist output.
+// Returns empty string if no principal found.
+func GetPrincipalFromKlist() (string, error) {
+	cmd := exec.Command("klist")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("klist failed: %w", err)
+	}
+
+	// Parse output looking for "Principal: user@REALM"
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Principal:") {
+			principal := strings.TrimSpace(strings.TrimPrefix(line, "Principal:"))
+			if principal != "" {
+				return principal, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no principal found in klist output")
+}
+
+// ConvertAPICacheToFile attempts to convert macOS API credential cache to a file-based cache.
+// Uses kinit --keychain to get tickets from keychain-stored password.
+// Returns the path to the created file cache, or error if conversion fails.
+func ConvertAPICacheToFile() (string, error) {
+	if !IsMacOSAPICCache() {
+		return "", fmt.Errorf("not using macOS API cache")
+	}
+
+	// Get the principal from current cache
+	principal, err := GetPrincipalFromKlist()
+	if err != nil {
+		return "", fmt.Errorf("cannot get principal: %w", err)
+	}
+
+	// Create cache file path
+	cacheFile := fmt.Sprintf("/tmp/krb5cc_sso_cli_%d", os.Getuid())
+
+	// Try keychain first (if user set it up with kinit --keychain --save)
+	// Close stdin to prevent password prompts from blocking
+	cmd := exec.Command("kinit", "-c", cacheFile, "--keychain", principal)
+	cmd.Stdin = nil
+	if err := cmd.Run(); err == nil {
+		return cacheFile, nil
+	}
+
+	return "", fmt.Errorf("could not convert API cache to file cache for %s (try: kinit --keychain --save %s)", principal, principal)
 }
