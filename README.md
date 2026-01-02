@@ -167,7 +167,6 @@ Use `--json` flag for machine-readable output:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
-| `--insecure` or `-k` | `false` | Skip certificate validation (insecure) |
 | `--user` or `-u` | (none) | Use specific CERN.CH Kerberos principal (e.g., `clange` or `clange@CERN.CH`). See [Multiple Kerberos Credentials](#multiple-kerberos-credentials). |
 | `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
 
@@ -179,7 +178,7 @@ Use `--json` flag for machine-readable output:
 | `--file` | `cookies.txt` | Output cookie file |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
 | `--force` | `false` | Force refresh of cookies, bypassing validation |
-| `--insecure` | `false` | Skip certificate validation |
+| `--insecure` or `-k` | `false` | Skip certificate validation |
 
 ### Token Command
 
@@ -189,6 +188,7 @@ Use `--json` flag for machine-readable output:
 | `--client-id` | (required) | OAuth client ID |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
 | `--realm` | `cern` | Keycloak realm |
+| `--insecure` or `-k` | `false` | Skip certificate validation |
 
 ### Device Command
 
@@ -197,7 +197,7 @@ Use `--json` flag for machine-readable output:
 | `--client-id` | (required) | OAuth client ID |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
 | `--realm` | `cern` | Keycloak realm |
-| `--insecure` | `false` | Skip certificate validation |
+| `--insecure` or `-k` | `false` | Skip certificate validation |
 
 ### Status Command
 
@@ -205,7 +205,6 @@ Use `--json` flag for machine-readable output:
 |------|---------|-------------|
 | `--file` | `cookies.txt` | Cookie file to check |
 | `--json` | `false` | Output as JSON instead of table format |
-| `--insecure` | `false` | Skip certificate validation |
 
 ## Requirements
 

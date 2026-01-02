@@ -173,7 +173,6 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 
 		time.Sleep(pollInterval)
 
-		time.Sleep(pollInterval)
 		resp, err := client.PostForm(tokenURL, url.Values{
 			"client_id":     {cfg.ClientID},
 			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
