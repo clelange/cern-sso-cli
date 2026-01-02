@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -39,6 +40,18 @@ func printStatusTable(cookies []*http.Cookie, w io.Writer) {
 		fmt.Fprintln(w, "No cookies found.")
 		return
 	}
+
+	sort.Slice(cookies, func(i, j int) bool {
+		domainI := cookies[i].Domain
+		domainJ := cookies[j].Domain
+		if domainI == "" {
+			domainI = "<no domain>"
+		}
+		if domainJ == "" {
+			domainJ = "<no domain>"
+		}
+		return domainI < domainJ
+	})
 
 	fmt.Fprintln(w, "Cookie Status:")
 	fmt.Fprintln(w, "")

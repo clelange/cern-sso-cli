@@ -260,6 +260,72 @@ func TestPrintStatusTable_LongPath(t *testing.T) {
 	}
 }
 
+func TestPrintStatusTable_SortedByDomain(t *testing.T) {
+	now := time.Now()
+
+	cookies := []*http.Cookie{
+		{
+			Name:    "zebra",
+			Value:   "val1",
+			Domain:  "zoo.com",
+			Path:    "/",
+			Expires: now.Add(1 * time.Hour),
+		},
+		{
+			Name:    "apple",
+			Value:   "val2",
+			Domain:  "apple.com",
+			Path:    "/",
+			Expires: now.Add(1 * time.Hour),
+		},
+		{
+			Name:    "banana",
+			Value:   "val3",
+			Domain:  "banana.com",
+			Path:    "/",
+			Expires: now.Add(1 * time.Hour),
+		},
+		{
+			Name:    "empty",
+			Value:   "val4",
+			Domain:  "",
+			Path:    "/",
+			Expires: now.Add(1 * time.Hour),
+		},
+	}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, &buf)
+
+	output := buf.String()
+
+	lines := strings.Split(output, "\n")
+
+	dataLines := []string{}
+	for _, line := range lines {
+		if strings.Contains(line, ".com") || strings.Contains(line, "<no domain>") {
+			dataLines = append(dataLines, line)
+		}
+	}
+
+	if len(dataLines) != 4 {
+		t.Fatalf("Expected 4 data lines, got %d", len(dataLines))
+	}
+
+	if !strings.Contains(dataLines[0], "<no domain>") {
+		t.Error("First line should contain '<no domain>' (empty domain should be sorted first)")
+	}
+	if !strings.Contains(dataLines[1], "apple.com") {
+		t.Error("Second line should contain 'apple.com'")
+	}
+	if !strings.Contains(dataLines[2], "banana.com") {
+		t.Error("Third line should contain 'banana.com'")
+	}
+	if !strings.Contains(dataLines[3], "zoo.com") {
+		t.Error("Fourth line should contain 'zoo.com'")
+	}
+}
+
 func TestPrintStatusJSON_ValidCookie(t *testing.T) {
 	now := time.Now()
 	validCookie := &http.Cookie{
