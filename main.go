@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/clelange/cern-sso-cli/pkg/cookie"
@@ -95,6 +97,25 @@ func printUsage() {
 }
 
 func saveCookie(targetURL, filename, authHost string) {
+	// Try to reuse existing cookies
+	if existing, err := cookie.Load(filename); err == nil && len(existing) > 0 {
+		log.Println("Checking validity of existing cookies...")
+		if valid, duration := verifyCookies(targetURL, authHost, existing); valid {
+			log.Printf("Existing cookies are valid for another %v. Reusing them.", duration.Round(time.Second))
+			jar, err := cookie.NewJar()
+			if err != nil {
+				log.Printf("Warning: Failed to create cookie jar: %v", err)
+				return
+			}
+			// Clean up expired ones
+			if err := jar.Update(filename, nil); err != nil {
+				log.Printf("Warning: Failed to cleanup cookies: %v", err)
+			}
+			return
+		}
+		log.Println("Cookies expired or invalid. Authenticating...")
+	}
+
 	log.Println("Initializing Kerberos client...")
 	kerbClient, err := auth.NewKerberosClient()
 	if err != nil {
@@ -114,24 +135,74 @@ func saveCookie(targetURL, filename, authHost string) {
 		log.Fatalf("Failed to collect cookies: %v", err)
 	}
 
-	// Extract domain from target URL
-	u, err := url.Parse(targetURL)
-	if err != nil {
-		log.Fatalf("Failed to parse target URL: %v", err)
-	}
-	domain := u.Hostname()
-
 	log.Printf("Saving %d cookies to %s\n", len(cookies), filename)
 	jar, err := cookie.NewJar()
 	if err != nil {
 		log.Fatalf("Failed to create cookie jar: %v", err)
 	}
 
-	if err := jar.Save(filename, cookies, domain); err != nil {
+	if err := jar.Update(filename, cookies); err != nil {
 		log.Fatalf("Failed to save cookies: %v", err)
 	}
 
 	log.Println("Done!")
+}
+
+// ... existing getToken ...
+
+func verifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, time.Duration) {
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return false, 0
+	}
+
+	jar, err := cookie.NewJar()
+	if err != nil {
+		return false, 0
+	}
+	jar.SetCookies(u, cookies)
+
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req.URL.Host == authHost {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get(targetURL)
+	if err != nil {
+		return false, 0
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK && resp.Request.URL.Host != authHost {
+		// Calculate minimum remaining validity
+		var minDuration time.Duration = 100000 * time.Hour // Start large
+		found := false
+		now := time.Now()
+
+		for _, c := range cookies {
+			if c.Expires.IsZero() {
+				continue
+			}
+			// Only consider cookies that haven't expired yet (though verify check implies they worked)
+			if c.Expires.After(now) {
+				d := c.Expires.Sub(now)
+				if d < minDuration {
+					minDuration = d
+					found = true
+				}
+			}
+		}
+		if !found {
+			minDuration = 0
+		}
+		return true, minDuration
+	}
+	return false, 0
 }
 
 func getToken(redirectURL, clientID, authHost, realm string) {

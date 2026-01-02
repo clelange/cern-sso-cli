@@ -145,3 +145,45 @@ func Load(filename string) ([]*http.Cookie, error) {
 func (j *Jar) SetCookiesFromSlice(u *url.URL, cookies []*http.Cookie) {
 	j.Jar.SetCookies(u, cookies)
 }
+
+// Update reads the existing cookies from the file, removes expired ones,
+// updates with the new cookies (replacing conflicts), and saves the result.
+func (j *Jar) Update(filename string, newCookies []*http.Cookie) error {
+	// Try to load existing cookies
+	existing, err := Load(filename)
+	if err != nil && !os.IsNotExist(err) {
+		// If file exists but error (e.g. permission), returns error
+		return err
+	}
+
+	// Filter expired and prepare map for merging
+	cookieMap := make(map[string]*http.Cookie)
+	now := time.Now()
+
+	// Helper to generate key
+	getKey := func(c *http.Cookie) string {
+		return c.Domain + "\t" + c.Path + "\t" + c.Name
+	}
+
+	// Add existing non-expired cookies
+	for _, c := range existing {
+		if c.Expires.After(now) || c.Expires.IsZero() {
+			cookieMap[getKey(c)] = c
+		} else {
+			fmt.Printf("Removing expired cookie: %s (expired %s)\n", c.Name, c.Expires)
+		}
+	}
+
+	// Add/Overwrite with new cookies
+	for _, c := range newCookies {
+		cookieMap[getKey(c)] = c
+	}
+
+	// Flatten back to slice
+	var finalCookies []*http.Cookie
+	for _, c := range cookieMap {
+		finalCookies = append(finalCookies, c)
+	}
+
+	return j.Save(filename, finalCookies, "")
+}

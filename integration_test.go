@@ -59,7 +59,7 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 	}
 
 	// Verify cookies work with curl
-	verifyCookies(t, cookieFile, targetURL, "Account Management")
+	verifyCookiesIntegration(t, cookieFile, targetURL, "Account Management")
 }
 
 func TestIntegration_GitLabCERN(t *testing.T) {
@@ -101,7 +101,7 @@ func TestIntegration_GitLabCERN(t *testing.T) {
 	}
 
 	// Verify cookies work
-	verifyCookies(t, cookieFile, targetURL, "GitLab")
+	verifyCookiesIntegration(t, cookieFile, targetURL, "GitLab")
 }
 
 func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
@@ -161,7 +161,7 @@ func skipIfNoCredentials(t *testing.T) {
 	}
 }
 
-func verifyCookies(t *testing.T, cookieFile, targetURL, expectedContent string) {
+func verifyCookiesIntegration(t *testing.T, cookieFile, targetURL, expectedContent string) {
 	// Load cookies
 	cookies, err := cookie.Load(cookieFile)
 	if err != nil {

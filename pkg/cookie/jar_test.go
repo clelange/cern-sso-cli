@@ -103,3 +103,60 @@ func TestJar_EmptyDomain(t *testing.T) {
 		t.Errorf("Expected domain fallback.com, got %q", loaded[0].Domain)
 	}
 }
+
+func TestJar_Update(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "cookies.txt")
+	jar, _ := NewJar()
+
+	now := time.Now().Truncate(time.Second)
+	validExpiry := now.Add(1 * time.Hour)
+	expired := now.Add(-1 * time.Hour)
+
+	initialCookies := []*http.Cookie{
+		{Name: "keep", Value: "val", Domain: "example.com", Path: "/", Expires: validExpiry},
+		{Name: "replace", Value: "old", Domain: "example.com", Path: "/", Expires: validExpiry},
+		{Name: "expire", Value: "bye", Domain: "example.com", Path: "/", Expires: expired},
+	}
+
+	// Create initial file
+	if err := jar.Save(tmpFile, initialCookies, "example.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	newCookies := []*http.Cookie{
+		{Name: "replace", Value: "new", Domain: "example.com", Path: "/", Expires: validExpiry},
+		{Name: "add", Value: "newItem", Domain: "example.com", Path: "/", Expires: validExpiry},
+	}
+
+	if err := jar.Update(tmpFile, newCookies); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(tmpFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Expected: keep, replace (new), add. expire should be gone.
+	if len(loaded) != 3 {
+		t.Errorf("Expected 3 cookies, got %d", len(loaded))
+	}
+
+	found := make(map[string]string)
+	for _, c := range loaded {
+		found[c.Name] = c.Value
+	}
+
+	if val, ok := found["keep"]; !ok || val != "val" {
+		t.Errorf("keep cookie missing or wrong val")
+	}
+	if val, ok := found["replace"]; !ok || val != "new" {
+		t.Errorf("replace cookie missing or wrong val: %s", val)
+	}
+	if val, ok := found["add"]; !ok || val != "newItem" {
+		t.Errorf("add cookie missing or wrong val")
+	}
+	if _, ok := found["expire"]; ok {
+		t.Errorf("expire cookie should be removed")
+	}
+}
