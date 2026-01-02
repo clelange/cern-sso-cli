@@ -1,4 +1,4 @@
-# cern-krb-cookie
+# cern-sso-cli
 
 A Go implementation of CERN SSO authentication tools. This is the Go equivalent of [auth-get-sso-cookie](https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie).
 
@@ -11,14 +11,14 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 ## Installation
 
 ```bash
-go install github.com/clelange/cern-krb-cookie@latest
+go install github.com/clelange/cern-sso-cli@latest
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/clelange/cern-krb-cookie.git
-cd cern-krb-cookie
+git clone https://github.com/clelange/cern-sso-cli.git
+cd cern-sso-cli
 make build
 ```
 
@@ -49,7 +49,7 @@ kinit your-username@CERN.CH
 klist
 
 # Run the tool - no environment variables needed!
-./cern-krb-cookie cookie --url https://gitlab.cern.ch
+./cern-sso-cli cookie --url https://gitlab.cern.ch
 ```
 
 **Linux:** Works automatically with the default credential cache (`/tmp/krb5cc_<UID>`).
@@ -64,7 +64,7 @@ kinit -c /tmp/krb5cc_custom your-username@CERN.CH
 export KRB5CCNAME=/tmp/krb5cc_custom
 
 # Now run the tool
-./cern-krb-cookie cookie --url https://gitlab.cern.ch
+./cern-sso-cli cookie --url https://gitlab.cern.ch
 ```
 
 #### 2. Username/Password (Fallback)
@@ -83,7 +83,7 @@ Or use [direnv](https://direnv.net/) with a `.envrc` file.
 Authenticate to a CERN SSO-protected URL and save cookies in Netscape format:
 
 ```bash
-./cern-krb-cookie cookie --url https://your-app.cern.ch --file cookies.txt
+./cern-sso-cli cookie --url https://your-app.cern.ch --file cookies.txt
 ```
 
 Use the cookies with curl:
@@ -97,7 +97,7 @@ curl -b cookies.txt https://your-app.cern.ch/api/resource
 Get an OIDC access token using Kerberos authentication:
 
 ```bash
-./cern-krb-cookie token --url https://redirect-uri --client-id your-client-id
+./cern-sso-cli token --url https://redirect-uri --client-id your-client-id
 ```
 
 ### Device Authorization
@@ -105,7 +105,7 @@ Get an OIDC access token using Kerberos authentication:
 For environments without Kerberos, use Device Authorization Grant:
 
 ```bash
-./cern-krb-cookie device --client-id your-client-id
+./cern-sso-cli device --client-id your-client-id
 ```
 
 ## Options

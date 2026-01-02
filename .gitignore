@@ -1,5 +1,5 @@
 # Binaries
-cern-krb-cookie
+cern-sso-cli
 dist/
 
 # Environment variables

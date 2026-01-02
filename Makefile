@@ -1,4 +1,4 @@
-BINARY_NAME=cern-krb-cookie
+BINARY_NAME=cern-sso-cli
 # Get version from git tag, or fallback to short hash + dirty flag
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 

@@ -1,4 +1,4 @@
-module github.com/clange/cern-krb-cookie
+module github.com/clelange/cern-sso-cli
 
 go 1.25.5
 

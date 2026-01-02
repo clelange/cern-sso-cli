@@ -93,7 +93,7 @@ jobs:
         unset KRB_USERNAME KRB_PASSWORD
         
         # Test cookie command with ccache
-        ./cern-krb-cookie cookie --url https://gitlab.cern.ch --file test_cookies.txt
+        ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
         
         # Verify cookies were created
         if [ ! -f test_cookies.txt ]; then

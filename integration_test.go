@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/clange/cern-krb-cookie/pkg/auth"
-	"github.com/clange/cern-krb-cookie/pkg/cookie"
+	"github.com/clelange/cern-sso-cli/pkg/auth"
+	"github.com/clelange/cern-sso-cli/pkg/cookie"
 )
 
 func TestIntegration_AccountWebCERN(t *testing.T) {

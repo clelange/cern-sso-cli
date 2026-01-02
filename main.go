@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/clange/cern-krb-cookie/pkg/auth"
-	"github.com/clange/cern-krb-cookie/pkg/cookie"
+	"github.com/clelange/cern-sso-cli/pkg/auth"
+	"github.com/clelange/cern-sso-cli/pkg/cookie"
 )
 
 const (
@@ -49,7 +49,7 @@ func main() {
 
 	// Handle version flag
 	if os.Args[1] == "--version" || os.Args[1] == "-v" || os.Args[1] == "version" {
-		fmt.Printf("cern-krb-cookie version %s\n", version)
+		fmt.Printf("cern-sso-cli version %s\n", version)
 		os.Exit(0)
 	}
 
@@ -85,9 +85,9 @@ func printUsage() {
 	fmt.Println("CERN SSO Authentication Tool")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  cern-krb-cookie cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch]")
-	fmt.Println("  cern-krb-cookie token --url <URL> --client-id <ID> [--realm cern]")
-	fmt.Println("  cern-krb-cookie device --client-id <ID> [--realm cern]")
+	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch]")
+	fmt.Println("  cern-sso-cli token --url <URL> --client-id <ID> [--realm cern]")
+	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern]")
 	fmt.Println()
 	fmt.Println("Environment variables:")
 	fmt.Println("  KRB_USERNAME  Kerberos username")
