@@ -139,6 +139,7 @@ Use `--json` flag for machine-readable output:
 | `--url` | (required) | Target URL to authenticate against |
 | `--file` | `cookies.txt` | Output cookie file |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
+| `--force` | `false` | Force refresh of cookies, bypassing validation |
 
 ### Token Command
 

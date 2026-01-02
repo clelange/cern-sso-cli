@@ -33,6 +33,7 @@ func main() {
 	cookieURL := cookieCmd.String("url", "", "URL to authenticate against")
 	cookieFile := cookieCmd.String("file", "cookies.txt", "Output cookie file")
 	cookieAuthHost := cookieCmd.String("auth-host", defaultAuthHostname, "Authentication hostname")
+	cookieForce := cookieCmd.Bool("force", false, "Force refresh of cookies, bypassing validation")
 
 	// Token command flags
 	tokenURL := tokenCmd.String("url", "", "Redirect URI for OAuth")
@@ -66,7 +67,7 @@ func main() {
 		if *cookieURL == "" {
 			log.Fatal("--url is required")
 		}
-		saveCookie(*cookieURL, *cookieFile, *cookieAuthHost)
+		saveCookie(*cookieURL, *cookieFile, *cookieAuthHost, *cookieForce)
 
 	case "token":
 		tokenCmd.Parse(os.Args[2:])
@@ -100,7 +101,7 @@ func printUsage() {
 	fmt.Println("CERN SSO Authentication Tool")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch]")
+	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch] [--force]")
 	fmt.Println("  cern-sso-cli token --url <URL> --client-id <ID> [--realm cern]")
 	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern]")
 	fmt.Println("  cern-sso-cli status [--file cookies.txt] [--json]")
@@ -110,13 +111,29 @@ func printUsage() {
 	fmt.Println("  KRB_PASSWORD  Kerberos password")
 }
 
-func saveCookie(targetURL, filename, authHost string) {
+func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 	// Extract domain from target URL for cookie matching
 	u, err := url.Parse(targetURL)
 	if err != nil {
 		log.Fatalf("Failed to parse target URL: %v", err)
 	}
 	targetDomain := u.Hostname()
+
+	// If force refresh is requested, skip validation and authenticate
+	if forceRefresh {
+		log.Println("Force refresh requested. Authenticating regardless of existing cookies...")
+		// Clean up expired cookies before authentication
+		jar, err := cookie.NewJar()
+		if err != nil {
+			log.Printf("Warning: Failed to create cookie jar: %v", err)
+		} else {
+			if err := jar.Update(filename, nil, targetDomain); err != nil {
+				log.Printf("Warning: Failed to cleanup cookies: %v", err)
+			}
+		}
+		authenticateWithKerberos(targetURL, filename, authHost)
+		return
+	}
 
 	// Try to reuse existing cookies
 	if existing, err := cookie.Load(filename); err == nil && len(existing) > 0 {
