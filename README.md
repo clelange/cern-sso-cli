@@ -87,6 +87,28 @@ export KRB_PASSWORD='your-cern-password'
 
 Or use [direnv](https://direnv.net/) with a `.envrc` file.
 
+#### Multiple Kerberos Credentials
+
+On macOS, you may have multiple Kerberos tickets from different accounts (visible via `klist -l`). Use the `--user` flag to select a specific CERN.CH account:
+
+```bash
+# Use a specific account
+./cern-sso-cli -u alice cookie --url https://gitlab.cern.ch
+
+# With full principal
+./cern-sso-cli --user alice@CERN.CH cookie --url https://gitlab.cern.ch
+```
+
+If no matching cache is found but `KRB_PASSWORD` is set, the tool will authenticate using the specified username with that password.
+
+If the specified user is not found, the error message lists available CERN.CH caches:
+```
+Error: no Kerberos cache found for user 'baduser@CERN.CH'
+Available CERN.CH caches:
+  alice@CERN.CH (expires Jan 3 22:26:00)
+  bob@CERN.CH (expires Jan 3 22:26:01)
+```
+
 ### Save SSO Cookies
 
 Authenticate to a CERN SSO-protected URL and save cookies in Netscape format:
@@ -144,6 +166,7 @@ Use `--json` flag for machine-readable output:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
+| `--user` or `-u` | (none) | Use specific CERN.CH Kerberos principal (e.g., `clange` or `clange@CERN.CH`). See [Multiple Kerberos Credentials](#multiple-kerberos-credentials). |
 | `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
 
 ### Cookie Command

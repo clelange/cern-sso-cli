@@ -119,6 +119,7 @@ func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient
 // If krbUsername is provided, it will search for a matching CERN.CH credential cache
 // and use that instead of the default cache. The username can be with or without
 // the @CERN.CH suffix (e.g., "clange" or "clange@CERN.CH").
+// If no matching cache is found but KRB_PASSWORD is set, password-based auth is used.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
 func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string) (*KerberosClient, error) {
 	cfg, err := LoadKrb5Config(krb5ConfigSource)
@@ -131,22 +132,56 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 	// If a specific username is requested, try to find and use that cache
 	if krbUsername != "" && IsMacOSAPICCache() {
 		cacheInfo, err := FindCacheByUsername(krbUsername)
+		if err == nil {
+			// Found a matching cache, convert it to file-based cache
+			filePath, convErr := ConvertSpecificCacheToFile(cacheInfo)
+			if convErr == nil {
+				os.Setenv("KRB5CCNAME", filePath)
+				cl, err = NewClientFromCCache(cfg)
+				if err == nil {
+					return newKerberosClientFromKrbClient(cl, version)
+				}
+			}
+		}
+
+		// No cache found or conversion failed - try password-based auth if available
+		password := os.Getenv("KRB_PASSWORD")
+		if password != "" {
+			// Normalize username to not include @CERN.CH for the client
+			username := krbUsername
+			if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
+				username = strings.Split(username, "@")[0]
+			}
+			cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
+			if loginErr := cl.Login(); loginErr == nil {
+				return newKerberosClientFromKrbClient(cl, version)
+			} else {
+				return nil, fmt.Errorf("kerberos login failed for %s: %w", krbUsername, loginErr)
+			}
+		}
+
+		// No password available, return the cache lookup error
 		if err != nil {
 			return nil, err // Error includes list of available caches
 		}
+		return nil, fmt.Errorf("failed to use cache for %s and KRB_PASSWORD not set", krbUsername)
+	}
 
-		// Convert the specific cache to a file-based cache
-		filePath, err := ConvertSpecificCacheToFile(cacheInfo)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert cache for %s: %w", cacheInfo.Principal, err)
+	// If username is specified but not on macOS API cache, try password auth directly
+	if krbUsername != "" {
+		password := os.Getenv("KRB_PASSWORD")
+		if password != "" {
+			username := krbUsername
+			if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
+				username = strings.Split(username, "@")[0]
+			}
+			cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
+			if loginErr := cl.Login(); loginErr == nil {
+				return newKerberosClientFromKrbClient(cl, version)
+			} else {
+				return nil, fmt.Errorf("kerberos login failed for %s: %w", krbUsername, loginErr)
+			}
 		}
-
-		os.Setenv("KRB5CCNAME", filePath)
-		cl, err = NewClientFromCCache(cfg)
-		if err == nil {
-			return newKerberosClientFromKrbClient(cl, version)
-		}
-		return nil, fmt.Errorf("failed to load converted cache for %s: %w", cacheInfo.Principal, err)
 	}
 
 	// Try credential cache first (default behavior)
