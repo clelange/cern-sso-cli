@@ -140,7 +140,8 @@ jobs:
     - run: make test
     - run: make build
 
-  # Integration tests on macOS with API cache conversion
+  # Integration tests on macOS with file-based cache
+  # Note: API->file cache auto-conversion requires keychain setup which isn't available in CI
   integration-macos:
     runs-on: macos-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
@@ -179,29 +180,32 @@ jobs:
             cern.ch = CERN.CH
         EOF
 
-    - name: Get Kerberos ticket (creates API cache by default on macOS)
+    - name: Get Kerberos ticket (file-based cache for CI)
       if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
       env:
         KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
         KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
       run: |
-        echo "$KRB_PASSWORD" | kinit "${KRB_USERNAME}@CERN.CH"
-        echo "=== Kerberos ticket (should show API: cache type) ==="
+        # Create file-based cache (keychain not available in CI)
+        echo "$KRB_PASSWORD" | kinit -c /tmp/krb5cc_ci "${KRB_USERNAME}@CERN.CH"
+        export KRB5CCNAME=/tmp/krb5cc_ci
+        echo "=== Kerberos ticket (file-based cache) ==="
         klist
 
     - name: Build
       run: make build
 
-    - name: Test with API cache (automatic conversion)
+    - name: Test with file-based cache
       if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
       env:
         KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
         KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+        KRB5CCNAME: /tmp/krb5cc_ci
       run: |
         # Unset password env vars to ensure we use ccache
         unset KRB_USERNAME KRB_PASSWORD
 
-        # This should auto-convert API cache to file cache
+        # Run with file-based cache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
 
         # Verify cookies were created
@@ -210,5 +214,5 @@ jobs:
           exit 1
         fi
 
-        echo "SUCCESS: macOS API cache conversion works!"
+        echo "SUCCESS: macOS file-based cache works!"
         cat test_cookies.txt
