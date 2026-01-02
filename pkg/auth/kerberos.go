@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/jcmturner/gokrb5/v8/client"
@@ -45,6 +46,7 @@ type KerberosClient struct {
 	httpClient       *http.Client
 	jar              http.CookieJar
 	collectedCookies []*http.Cookie // Stores full cookie attributes from Set-Cookie headers
+	version          string         // Version string for User-Agent header
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -52,7 +54,7 @@ type KerberosClient struct {
 // on Linux and macOS with file-based caches. If no valid ccache is found,
 // it falls back to username/password authentication using KRB_USERNAME and
 // KRB_PASSWORD environment variables.
-func NewKerberosClient() (*KerberosClient, error) {
+func NewKerberosClient(version string) (*KerberosClient, error) {
 	cfg, err := config.NewFromString(defaultKrb5Conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
@@ -64,7 +66,7 @@ func NewKerberosClient() (*KerberosClient, error) {
 	cl, err = NewClientFromCCache(cfg)
 	if err == nil {
 		// Successfully loaded from ccache
-		return newKerberosClientFromKrbClient(cl)
+		return newKerberosClientFromKrbClient(cl, version)
 	}
 
 	// Fall back to password-based login from environment
@@ -86,11 +88,11 @@ func NewKerberosClient() (*KerberosClient, error) {
 		return nil, fmt.Errorf("kerberos login failed: %w", err)
 	}
 
-	return newKerberosClientFromKrbClient(cl)
+	return newKerberosClientFromKrbClient(cl, version)
 }
 
 // newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
-func newKerberosClientFromKrbClient(cl *client.Client) (*KerberosClient, error) {
+func newKerberosClientFromKrbClient(cl *client.Client, version string) (*KerberosClient, error) {
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
@@ -100,6 +102,7 @@ func newKerberosClientFromKrbClient(cl *client.Client) (*KerberosClient, error) 
 		krbClient:        cl,
 		jar:              jar,
 		collectedCookies: make([]*http.Cookie, 0),
+		version:          version,
 	}
 
 	// Create a custom transport that intercepts cookies from responses
@@ -127,6 +130,10 @@ type cookieInterceptTransport struct {
 }
 
 func (t *cookieInterceptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Set headers for all requests
+	req.Header.Set("User-Agent", fmt.Sprintf("CERN-SSO-CLI/%s (%s; %s)", t.client.version, runtime.GOOS, runtime.GOARCH))
+	req.Header.Set("Accept", "*/*")
+
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		return resp, err

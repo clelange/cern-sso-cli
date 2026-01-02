@@ -151,7 +151,7 @@ func saveCookie(targetURL, filename, authHost string) {
 	}
 
 	log.Println("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClient()
+	kerbClient, err := auth.NewKerberosClient(version)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
@@ -281,7 +281,7 @@ func verifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, ti
 
 func getToken(redirectURL, clientID, authHost, realm string) {
 	log.Println("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClient()
+	kerbClient, err := auth.NewKerberosClient(version)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
