@@ -112,6 +112,15 @@ type KerberosClient struct {
 // KRB_PASSWORD environment variables.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
 func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient, error) {
+	return NewKerberosClientWithUser(version, krb5ConfigSource, "")
+}
+
+// NewKerberosClientWithUser creates a new Kerberos client, optionally for a specific user.
+// If krbUsername is provided, it will search for a matching CERN.CH credential cache
+// and use that instead of the default cache. The username can be with or without
+// the @CERN.CH suffix (e.g., "clange" or "clange@CERN.CH").
+// krb5ConfigSource can be "embedded" (default), "system", or a file path.
+func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string) (*KerberosClient, error) {
 	cfg, err := LoadKrb5Config(krb5ConfigSource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
@@ -119,7 +128,28 @@ func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient
 
 	var cl *client.Client
 
-	// Try credential cache first
+	// If a specific username is requested, try to find and use that cache
+	if krbUsername != "" && IsMacOSAPICCache() {
+		cacheInfo, err := FindCacheByUsername(krbUsername)
+		if err != nil {
+			return nil, err // Error includes list of available caches
+		}
+
+		// Convert the specific cache to a file-based cache
+		filePath, err := ConvertSpecificCacheToFile(cacheInfo)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert cache for %s: %w", cacheInfo.Principal, err)
+		}
+
+		os.Setenv("KRB5CCNAME", filePath)
+		cl, err = NewClientFromCCache(cfg)
+		if err == nil {
+			return newKerberosClientFromKrbClient(cl, version)
+		}
+		return nil, fmt.Errorf("failed to load converted cache for %s: %w", cacheInfo.Principal, err)
+	}
+
+	// Try credential cache first (default behavior)
 	cl, err = NewClientFromCCache(cfg)
 	if err == nil {
 		// Successfully loaded from ccache
