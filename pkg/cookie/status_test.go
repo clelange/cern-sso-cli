@@ -156,6 +156,110 @@ func TestPrintStatusTable_NoCookies(t *testing.T) {
 	}
 }
 
+func TestPrintStatusTable_LongCookieName(t *testing.T) {
+	now := time.Now()
+
+	shortNameCookie := &http.Cookie{
+		Name:    "short",
+		Value:   "val1",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	longNameCookie := &http.Cookie{
+		Name:    "this_is_a_very_long_cookie_name_that_exceeds_32_characters",
+		Value:   "val2",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	exactly32Cookie := &http.Cookie{
+		Name:    "exactly_32_characters_long_name!",
+		Value:   "val3",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	cookies := []*http.Cookie{shortNameCookie, longNameCookie, exactly32Cookie}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, &buf)
+
+	output := buf.String()
+
+	if !strings.Contains(output, "short") {
+		t.Error("Output should contain short cookie name unchanged")
+	}
+
+	truncatedName := "this_is_a_very_long_cookie_na..."
+	if !strings.Contains(output, truncatedName) {
+		t.Errorf("Output should contain truncated long cookie name: %s", truncatedName)
+	}
+
+	if !strings.Contains(output, "exactly_32_characters_long_name!") {
+		t.Error("Output should contain 32-character name unchanged")
+	}
+
+	if strings.Contains(output, "this_is_a_very_long_cookie_name_that_exceeds_32_characters") {
+		t.Error("Output should NOT contain the full long cookie name")
+	}
+}
+
+func TestPrintStatusTable_LongPath(t *testing.T) {
+	now := time.Now()
+
+	shortPathCookie := &http.Cookie{
+		Name:    "cookie1",
+		Value:   "val1",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	longPathCookie := &http.Cookie{
+		Name:    "cookie2",
+		Value:   "val2",
+		Domain:  "example.com",
+		Path:    "/very/long/path/that/exceeds/22/characters",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	exactly22PathCookie := &http.Cookie{
+		Name:    "cookie3",
+		Value:   "val3",
+		Domain:  "example.com",
+		Path:    "/exactly/22/chars/path",
+		Expires: now.Add(1 * time.Hour),
+	}
+
+	cookies := []*http.Cookie{shortPathCookie, longPathCookie, exactly22PathCookie}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, &buf)
+
+	output := buf.String()
+
+	if !strings.Contains(output, "/") {
+		t.Error("Output should contain short path unchanged")
+	}
+
+	truncatedPath := "/very/long/path/tha..."
+	if !strings.Contains(output, truncatedPath) {
+		t.Errorf("Output should contain truncated long path: %s", truncatedPath)
+	}
+
+	if !strings.Contains(output, "/exactly/22/chars/path") {
+		t.Error("Output should contain 22-character path unchanged")
+	}
+
+	if strings.Contains(output, "/very/long/path/that/exceeds/22/characters") {
+		t.Error("Output should NOT contain the full long path")
+	}
+}
+
 func TestPrintStatusJSON_ValidCookie(t *testing.T) {
 	now := time.Now()
 	validCookie := &http.Cookie{

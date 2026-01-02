@@ -6,7 +6,22 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
+
+// truncateString shortens a string to maxLen characters, adding "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if utf8.RuneCountInString(s) <= maxLen {
+		return s
+	}
+
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+
+	return string(runes[:maxLen-3]) + "..."
+}
 
 // PrintStatus displays cookie information in either table or JSON format.
 // If asJSON is true, output is in JSON format. Otherwise, a formatted table is shown.
@@ -27,8 +42,8 @@ func printStatusTable(cookies []*http.Cookie, w io.Writer) {
 
 	fmt.Fprintln(w, "Cookie Status:")
 	fmt.Fprintln(w, "")
-	fmt.Fprintf(w, "%-30s %-20s %-20s %-20s %-10s\n", "Name", "Domain", "Path", "Expires", "Status")
-	fmt.Fprintln(w, strings.Repeat("-", 100))
+	fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n", "Name", "Domain", "Path", "Expires", "Status")
+	fmt.Fprintln(w, strings.Repeat("-", 104))
 
 	now := time.Now()
 	for _, c := range cookies {
@@ -71,8 +86,8 @@ func printStatusTable(cookies []*http.Cookie, w io.Writer) {
 			domain = "<no domain>"
 		}
 
-		fmt.Fprintf(w, "%-30s %-20s %-20s %-20s %-10s\n",
-			c.Name, domain, c.Path, expiresStr, status+" "+flagStr)
+		fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n",
+			truncateString(c.Name, 32), domain, truncateString(c.Path, 22), expiresStr, status+" "+flagStr)
 	}
 }
 
