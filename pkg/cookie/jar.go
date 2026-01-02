@@ -148,7 +148,8 @@ func (j *Jar) SetCookiesFromSlice(u *url.URL, cookies []*http.Cookie) {
 
 // Update reads the existing cookies from the file, removes expired ones,
 // updates with the new cookies (replacing conflicts), and saves the result.
-func (j *Jar) Update(filename string, newCookies []*http.Cookie) error {
+// The domain parameter is used as a fallback for cookies without a domain set.
+func (j *Jar) Update(filename string, newCookies []*http.Cookie, domain string) error {
 	// Try to load existing cookies
 	existing, err := Load(filename)
 	if err != nil && !os.IsNotExist(err) {
@@ -185,5 +186,5 @@ func (j *Jar) Update(filename string, newCookies []*http.Cookie) error {
 		finalCookies = append(finalCookies, c)
 	}
 
-	return j.Save(filename, finalCookies, "")
+	return j.Save(filename, finalCookies, domain)
 }

@@ -62,6 +62,98 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 	verifyCookiesIntegration(t, cookieFile, targetURL, "Account Management")
 }
 
+func TestIntegration_MultiDomainCookies(t *testing.T) {
+	skipIfNoCredentials(t)
+
+	cookieFile := "test_multi_domain_cookies.txt"
+	defer os.Remove(cookieFile)
+
+	// First, authenticate to account.web.cern.ch
+	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
+	authHost := "auth.cern.ch"
+
+	kerbClient, err := auth.NewKerberosClient()
+	if err != nil {
+		t.Fatalf("Failed to create Kerberos client: %v", err)
+	}
+
+	result, err := kerbClient.LoginWithKerberos(accountURL, authHost, true)
+	if err != nil {
+		t.Fatalf("Account login failed: %v", err)
+	}
+
+	accountCookies, err := kerbClient.CollectCookies(accountURL, result)
+	if err != nil {
+		t.Fatalf("Failed to collect account cookies: %v", err)
+	}
+	t.Logf("Collected %d cookies for account.web.cern.ch", len(accountCookies))
+
+	// Save account cookies
+	u1, _ := url.Parse(accountURL)
+	jar, _ := cookie.NewJar()
+	if err := jar.Save(cookieFile, accountCookies, u1.Hostname()); err != nil {
+		t.Fatalf("Failed to save account cookies: %v", err)
+	}
+	kerbClient.Close()
+
+	// Now authenticate to gitlab.cern.ch with a fresh client
+	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
+
+	kerbClient2, err := auth.NewKerberosClient()
+	if err != nil {
+		t.Fatalf("Failed to create second Kerberos client: %v", err)
+	}
+	defer kerbClient2.Close()
+
+	result, err = kerbClient2.LoginWithKerberos(gitlabURL, authHost, true)
+	if err != nil {
+		t.Fatalf("GitLab login failed: %v", err)
+	}
+
+	gitlabCookies, err := kerbClient2.CollectCookies(gitlabURL, result)
+	if err != nil {
+		t.Fatalf("Failed to collect GitLab cookies: %v", err)
+	}
+	t.Logf("Collected %d cookies for gitlab.cern.ch", len(gitlabCookies))
+
+	// Update with gitlab cookies (should preserve account cookies)
+	u2, _ := url.Parse(gitlabURL)
+	if err := jar.Update(cookieFile, gitlabCookies, u2.Hostname()); err != nil {
+		t.Fatalf("Failed to update with GitLab cookies: %v", err)
+	}
+
+	// Verify file has cookies for both domains
+	allCookies, err := cookie.Load(cookieFile)
+	if err != nil {
+		t.Fatalf("Failed to load cookies: %v", err)
+	}
+
+	accountDomainFound := false
+	gitlabDomainFound := false
+	for _, c := range allCookies {
+		if strings.Contains(c.Domain, "account") || strings.Contains(c.Domain, "cern.ch") {
+			if strings.Contains(c.Domain, "account") {
+				accountDomainFound = true
+			}
+		}
+		if strings.Contains(c.Domain, "gitlab") {
+			gitlabDomainFound = true
+		}
+	}
+
+	if !accountDomainFound || !gitlabDomainFound {
+		t.Logf("Cookies found: %d", len(allCookies))
+		for _, c := range allCookies {
+			t.Logf("  %s: domain=%s", c.Name, c.Domain)
+		}
+		if !gitlabDomainFound {
+			t.Errorf("GitLab cookies not found in file")
+		}
+	}
+
+	t.Logf("Multi-domain cookie file contains %d total cookies", len(allCookies))
+}
+
 func TestIntegration_GitLabCERN(t *testing.T) {
 	skipIfNoCredentials(t)
 

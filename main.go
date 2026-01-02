@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
@@ -97,23 +98,42 @@ func printUsage() {
 }
 
 func saveCookie(targetURL, filename, authHost string) {
-	// Try to reuse existing cookies
+	// Extract domain from target URL for cookie matching
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		log.Fatalf("Failed to parse target URL: %v", err)
+	}
+	targetDomain := u.Hostname()
+
+	// Try to reuse existing cookies that match this domain
 	if existing, err := cookie.Load(filename); err == nil && len(existing) > 0 {
-		log.Println("Checking validity of existing cookies...")
-		if valid, duration := verifyCookies(targetURL, authHost, existing); valid {
-			log.Printf("Existing cookies are valid for another %v. Reusing them.", duration.Round(time.Second))
-			jar, err := cookie.NewJar()
-			if err != nil {
-				log.Printf("Warning: Failed to create cookie jar: %v", err)
+		// Filter cookies relevant to this domain
+		var domainCookies []*http.Cookie
+		for _, c := range existing {
+			if matchesDomain(c.Domain, targetDomain) {
+				domainCookies = append(domainCookies, c)
+			}
+		}
+
+		if len(domainCookies) > 0 {
+			log.Printf("Checking validity of %d existing cookies for %s...", len(domainCookies), targetDomain)
+			if valid, duration := verifyCookies(targetURL, authHost, domainCookies); valid {
+				log.Printf("Existing cookies are valid for another %v. Reusing them.", formatDuration(duration))
+				jar, err := cookie.NewJar()
+				if err != nil {
+					log.Printf("Warning: Failed to create cookie jar: %v", err)
+					return
+				}
+				// Clean up expired ones
+				if err := jar.Update(filename, nil, targetDomain); err != nil {
+					log.Printf("Warning: Failed to cleanup cookies: %v", err)
+				}
 				return
 			}
-			// Clean up expired ones
-			if err := jar.Update(filename, nil); err != nil {
-				log.Printf("Warning: Failed to cleanup cookies: %v", err)
-			}
-			return
+			log.Println("Cookies expired or invalid. Authenticating...")
+		} else {
+			log.Printf("No existing cookies for %s. Authenticating...", targetDomain)
 		}
-		log.Println("Cookies expired or invalid. Authenticating...")
 	}
 
 	log.Println("Initializing Kerberos client...")
@@ -141,11 +161,51 @@ func saveCookie(targetURL, filename, authHost string) {
 		log.Fatalf("Failed to create cookie jar: %v", err)
 	}
 
-	if err := jar.Update(filename, cookies); err != nil {
+	if err := jar.Update(filename, cookies, targetDomain); err != nil {
 		log.Fatalf("Failed to save cookies: %v", err)
 	}
 
 	log.Println("Done!")
+}
+
+// matchesDomain checks if a cookie domain matches the target domain.
+// Cookie domain ".example.com" matches "sub.example.com" and "example.com".
+// Cookie domain "example.com" matches only "example.com".
+func matchesDomain(cookieDomain, targetDomain string) bool {
+	if cookieDomain == "" {
+		return false
+	}
+	// Exact match
+	if cookieDomain == targetDomain {
+		return true
+	}
+	// Leading dot means subdomains match
+	if strings.HasPrefix(cookieDomain, ".") {
+		// ".example.com" matches "sub.example.com" and "example.com"
+		base := strings.TrimPrefix(cookieDomain, ".")
+		if targetDomain == base || strings.HasSuffix(targetDomain, cookieDomain) {
+			return true
+		}
+	}
+	return false
+}
+
+// formatDuration formats a duration in a human-readable way.
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%dh %02dm %02ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %02ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 // ... existing getToken ...

@@ -128,7 +128,7 @@ func TestJar_Update(t *testing.T) {
 		{Name: "add", Value: "newItem", Domain: "example.com", Path: "/", Expires: validExpiry},
 	}
 
-	if err := jar.Update(tmpFile, newCookies); err != nil {
+	if err := jar.Update(tmpFile, newCookies, "example.com"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,5 +158,51 @@ func TestJar_Update(t *testing.T) {
 	}
 	if _, ok := found["expire"]; ok {
 		t.Errorf("expire cookie should be removed")
+	}
+}
+
+func TestJar_UpdateMultipleDomains(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "cookies.txt")
+	jar, _ := NewJar()
+
+	now := time.Now().Truncate(time.Second)
+	validExpiry := now.Add(1 * time.Hour)
+
+	// Initial cookies for domain1
+	domain1Cookies := []*http.Cookie{
+		{Name: "session", Value: "domain1", Domain: "domain1.com", Path: "/", Expires: validExpiry},
+	}
+	if err := jar.Save(tmpFile, domain1Cookies, "domain1.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add cookies for domain2
+	domain2Cookies := []*http.Cookie{
+		{Name: "session", Value: "domain2", Domain: "domain2.com", Path: "/", Expires: validExpiry},
+	}
+	if err := jar.Update(tmpFile, domain2Cookies, "domain2.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify both domains have cookies
+	loaded, err := Load(tmpFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(loaded) != 2 {
+		t.Errorf("Expected 2 cookies, got %d", len(loaded))
+	}
+
+	found := make(map[string]string)
+	for _, c := range loaded {
+		found[c.Domain] = c.Value
+	}
+
+	if val, ok := found["domain1.com"]; !ok || val != "domain1" {
+		t.Errorf("domain1.com cookie missing or wrong val")
+	}
+	if val, ok := found["domain2.com"]; !ok || val != "domain2" {
+		t.Errorf("domain2.com cookie missing or wrong val")
 	}
 }
