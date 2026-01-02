@@ -61,8 +61,8 @@ func (j *Jar) Save(filename string, cookies []*http.Cookie, domain string) error
 		}
 		expires := c.Expires.Unix()
 		if expires <= 0 {
-			// Default to 24 hours from now if no expiry
-			expires = time.Now().Add(24 * time.Hour).Unix()
+			// Default to 10 hours from now if no expiry (CERN SSO cookie validity)
+			expires = time.Now().Add(10 * time.Hour).Unix()
 		}
 		domainField := c.Domain
 		if domainField == "" {
