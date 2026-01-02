@@ -8,6 +8,129 @@ import (
 	"time"
 )
 
+func TestMatchDomain(t *testing.T) {
+	tests := []struct {
+		name         string
+		cookieDomain string
+		targetDomain string
+		expected     bool
+	}{
+		{"exact match", "example.com", "example.com", true},
+		{"leading dot matches subdomain", ".example.com", "sub.example.com", true},
+		{"leading dot matches base", ".example.com", "example.com", true},
+		{"no leading dot doesn't match subdomain", "example.com", "sub.example.com", false},
+		{"empty cookie domain", "", "example.com", false},
+		{"subdomain matches leading dot", ".example.com", "deep.sub.example.com", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MatchDomain(tt.cookieDomain, tt.targetDomain)
+			if result != tt.expected {
+				t.Errorf("MatchDomain(%q, %q) = %v, want %v", tt.cookieDomain, tt.targetDomain, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFilterAuthCookies(t *testing.T) {
+	cookies := []*http.Cookie{
+		{Name: "auth1", Domain: "auth.cern.ch"},
+		{Name: "auth2", Domain: ".auth.cern.ch"},
+		{Name: "other", Domain: "other.cern.ch"},
+		{Name: "subdomain", Domain: "sub.auth.cern.ch"},
+		{Name: "empty", Domain: ""},
+	}
+
+	filtered := FilterAuthCookies(cookies, "auth.cern.ch")
+
+	if len(filtered) != 3 {
+		t.Errorf("Expected 3 auth cookies, got %d", len(filtered))
+	}
+
+	domains := make(map[string]bool)
+	for _, c := range filtered {
+		domains[c.Name] = true
+	}
+
+	if !domains["auth1"] {
+		t.Error("Expected auth1 to be in filtered results")
+	}
+	if !domains["auth2"] {
+		t.Error("Expected auth2 to be in filtered results")
+	}
+	if !domains["subdomain"] {
+		t.Error("Expected subdomain to be in filtered results")
+	}
+	if domains["other"] {
+		t.Error("Did not expect other to be in filtered results")
+	}
+}
+
+func TestFilterAuthCookies_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		cookies  []*http.Cookie
+		authHost string
+		expected []string // cookie names that should be included
+		excluded []string // cookie names that should NOT be included
+	}{
+		{
+			name: "unrelated subdomain should not match",
+			cookies: []*http.Cookie{
+				{Name: "bad", Domain: "notauth.cern.ch"},
+				{Name: "good", Domain: "auth.cern.ch"},
+			},
+			authHost: "auth.cern.ch",
+			expected: []string{"good"},
+			excluded: []string{"bad"},
+		},
+		{
+			name: "similar suffix should not match",
+			cookies: []*http.Cookie{
+				{Name: "bad1", Domain: "fakeauth.cern.ch"},
+				{Name: "bad2", Domain: "myauth.cern.ch"},
+				{Name: "good", Domain: ".auth.cern.ch"},
+			},
+			authHost: "auth.cern.ch",
+			expected: []string{"good"},
+			excluded: []string{"bad1", "bad2"},
+		},
+		{
+			name: "deeper subdomain should match",
+			cookies: []*http.Cookie{
+				{Name: "deep", Domain: "very.deep.sub.auth.cern.ch"},
+				{Name: "exact", Domain: "auth.cern.ch"},
+			},
+			authHost: "auth.cern.ch",
+			expected: []string{"deep", "exact"},
+			excluded: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := FilterAuthCookies(tt.cookies, tt.authHost)
+
+			found := make(map[string]bool)
+			for _, c := range filtered {
+				found[c.Name] = true
+			}
+
+			for _, name := range tt.expected {
+				if !found[name] {
+					t.Errorf("Expected cookie %q to be in filtered results", name)
+				}
+			}
+			for _, name := range tt.excluded {
+				if found[name] {
+					t.Errorf("Did NOT expect cookie %q to be in filtered results", name)
+				}
+			}
+		})
+	}
+}
+
 func TestJar_SaveAndLoad(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "cookie-test")
 	if err != nil {

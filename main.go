@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
@@ -119,19 +118,31 @@ func saveCookie(targetURL, filename, authHost string) {
 	}
 	targetDomain := u.Hostname()
 
-	// Try to reuse existing cookies that match this domain
+	// Try to reuse existing cookies
 	if existing, err := cookie.Load(filename); err == nil && len(existing) > 0 {
-		// Filter cookies relevant to this domain
+		// First, try auth.cern.ch cookies
+		authCookies := cookie.FilterAuthCookies(existing, authHost)
+		if len(authCookies) > 0 {
+			log.Printf("Found %d auth.cern.ch cookies, attempting to use them...", len(authCookies))
+			if ok, result, client := tryAuthCookies(targetURL, authHost, authCookies); ok {
+				log.Println("Existing auth cookies worked. Skipping Kerberos authentication.")
+				saveCookies(client, filename, targetURL, authHost, result)
+				return
+			}
+			log.Println("Auth cookies invalid or expired, falling back to Kerberos...")
+		}
+
+		// Then try cookies that match the target domain
 		var domainCookies []*http.Cookie
 		for _, c := range existing {
-			if matchesDomain(c.Domain, targetDomain) {
+			if cookie.MatchDomain(c.Domain, targetDomain) {
 				domainCookies = append(domainCookies, c)
 			}
 		}
 
 		if len(domainCookies) > 0 {
 			log.Printf("Checking validity of %d existing cookies for %s...", len(domainCookies), targetDomain)
-			if valid, duration := verifyCookies(targetURL, authHost, domainCookies); valid {
+			if valid, duration := cookie.VerifyCookies(targetURL, authHost, domainCookies); valid {
 				log.Printf("Existing cookies are valid for another %v. Reusing them.", formatDuration(duration))
 				jar, err := cookie.NewJar()
 				if err != nil {
@@ -150,58 +161,7 @@ func saveCookie(targetURL, filename, authHost string) {
 		}
 	}
 
-	log.Println("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClient(version)
-	if err != nil {
-		log.Fatalf("Failed to initialize Kerberos: %v", err)
-	}
-	defer kerbClient.Close()
-
-	log.Println("Logging in with Kerberos...")
-	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
-	if err != nil {
-		log.Fatalf("Login failed: %v", err)
-	}
-
-	log.Println("Collecting cookies...")
-	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
-	if err != nil {
-		log.Fatalf("Failed to collect cookies: %v", err)
-	}
-
-	log.Printf("Saving %d cookies to %s\n", len(cookies), filename)
-	jar, err := cookie.NewJar()
-	if err != nil {
-		log.Fatalf("Failed to create cookie jar: %v", err)
-	}
-
-	if err := jar.Update(filename, cookies, targetDomain); err != nil {
-		log.Fatalf("Failed to save cookies: %v", err)
-	}
-
-	log.Println("Done!")
-}
-
-// matchesDomain checks if a cookie domain matches the target domain.
-// Cookie domain ".example.com" matches "sub.example.com" and "example.com".
-// Cookie domain "example.com" matches only "example.com".
-func matchesDomain(cookieDomain, targetDomain string) bool {
-	if cookieDomain == "" {
-		return false
-	}
-	// Exact match
-	if cookieDomain == targetDomain {
-		return true
-	}
-	// Leading dot means subdomains match
-	if strings.HasPrefix(cookieDomain, ".") {
-		// ".example.com" matches "sub.example.com" and "example.com"
-		base := strings.TrimPrefix(cookieDomain, ".")
-		if targetDomain == base || strings.HasSuffix(targetDomain, cookieDomain) {
-			return true
-		}
-	}
-	return false
+	authenticateWithKerberos(targetURL, filename, authHost)
 }
 
 // formatDuration formats a duration in a human-readable way.
@@ -220,63 +180,6 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm %02ds", m, s)
 	}
 	return fmt.Sprintf("%ds", s)
-}
-
-// ... existing getToken ...
-
-func verifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, time.Duration) {
-	u, err := url.Parse(targetURL)
-	if err != nil {
-		return false, 0
-	}
-
-	jar, err := cookie.NewJar()
-	if err != nil {
-		return false, 0
-	}
-	jar.SetCookies(u, cookies)
-
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL.Host == authHost {
-				return http.ErrUseLastResponse
-			}
-			return nil
-		},
-	}
-
-	resp, err := client.Get(targetURL)
-	if err != nil {
-		return false, 0
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK && resp.Request.URL.Host != authHost {
-		// Calculate minimum remaining validity
-		var minDuration time.Duration = 100000 * time.Hour // Start large
-		found := false
-		now := time.Now()
-
-		for _, c := range cookies {
-			if c.Expires.IsZero() {
-				continue
-			}
-			// Only consider cookies that haven't expired yet (though verify check implies they worked)
-			if c.Expires.After(now) {
-				d := c.Expires.Sub(now)
-				if d < minDuration {
-					minDuration = d
-					found = true
-				}
-			}
-		}
-		if !found {
-			minDuration = 0
-		}
-		return true, minDuration
-	}
-	return false, 0
 }
 
 func getToken(redirectURL, clientID, authHost, realm string) {
@@ -323,4 +226,67 @@ func deviceLogin(clientID, authHost, realm string) {
 		fmt.Println("\nRefresh Token:")
 		fmt.Println(token.RefreshToken)
 	}
+}
+
+// tryAuthCookies attempts to authenticate using existing auth cookies.
+// Returns (success, result, client) tuple.
+func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, *auth.LoginResult, *auth.KerberosClient) {
+	kerbClient, err := auth.NewKerberosClient(version)
+	if err != nil {
+		log.Printf("Warning: Failed to create Kerberos client for cookie attempt: %v", err)
+		return false, nil, nil
+	}
+
+	result, err := kerbClient.TryLoginWithCookies(targetURL, authHost, cookies)
+	if err != nil {
+		// Cookies didn't work
+		kerbClient.Close()
+		return false, nil, nil
+	}
+
+	return true, result, kerbClient
+}
+
+// saveCookies collects and saves cookies from a successful authentication.
+func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult) {
+	log.Println("Collecting cookies...")
+	cookies, err := client.CollectCookies(targetURL, authHost, result)
+	client.Close()
+	if err != nil {
+		log.Printf("Warning: Failed to collect cookies: %v", err)
+		return
+	}
+
+	u, _ := url.Parse(targetURL)
+	log.Printf("Saving %d cookies to %s\n", len(cookies), filename)
+	jar, err := cookie.NewJar()
+	if err != nil {
+		log.Printf("Warning: Failed to create cookie jar: %v", err)
+		return
+	}
+
+	if err := jar.Update(filename, cookies, u.Hostname()); err != nil {
+		log.Printf("Warning: Failed to save cookies: %v", err)
+		return
+	}
+
+	log.Println("Done!")
+}
+
+// authenticateWithKerberos performs full Kerberos authentication flow.
+func authenticateWithKerberos(targetURL, filename, authHost string) {
+	log.Println("Initializing Kerberos client...")
+	kerbClient, err := auth.NewKerberosClient(version)
+	if err != nil {
+		log.Fatalf("Failed to initialize Kerberos: %v", err)
+	}
+	defer kerbClient.Close()
+
+	log.Println("Logging in with Kerberos...")
+	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
+	if err != nil {
+		log.Fatalf("Login failed: %v", err)
+	}
+
+	saveCookies(kerbClient, filename, targetURL, authHost, result)
 }

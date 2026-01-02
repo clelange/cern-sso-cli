@@ -8,6 +8,7 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 - Check cookie validity and expiration status
 - Get OIDC access tokens via Authorization Code flow
 - Device Authorization Grant flow for headless environments
+- Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
 
 ## Installation
 
@@ -191,7 +192,3 @@ make test-integration
 The integration tests verify cookie generation and authentication against:
 - account.web.cern.ch
 - gitlab.cern.ch
-
-## License
-
-See [LICENSE](LICENSE) for details.

@@ -15,6 +15,106 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
+// MatchDomain checks if a cookie domain matches the target domain.
+// Cookie domain ".example.com" matches "sub.example.com" and "example.com".
+// Cookie domain "example.com" matches only "example.com".
+func MatchDomain(cookieDomain, targetDomain string) bool {
+	if cookieDomain == "" {
+		return false
+	}
+	// Exact match
+	if cookieDomain == targetDomain {
+		return true
+	}
+	// Leading dot means subdomains match
+	if strings.HasPrefix(cookieDomain, ".") {
+		// ".example.com" matches "sub.example.com" and "example.com"
+		base := strings.TrimPrefix(cookieDomain, ".")
+		if targetDomain == base || strings.HasSuffix(targetDomain, cookieDomain) {
+			return true
+		}
+	}
+	return false
+}
+
+// FilterAuthCookies returns cookies that belong to the auth hostname.
+func FilterAuthCookies(cookies []*http.Cookie, authHost string) []*http.Cookie {
+	var authCookies []*http.Cookie
+	for _, c := range cookies {
+		if c.Domain == authHost || c.Domain == "."+authHost || strings.HasSuffix(c.Domain, "."+authHost) {
+			authCookies = append(authCookies, c)
+		}
+	}
+	return authCookies
+}
+
+// VerifyCookies checks if cookies are valid for the target URL.
+// Returns (valid, remainingDuration) tuple.
+func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, time.Duration) {
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return false, 0
+	}
+
+	jar, err := NewJar()
+	if err != nil {
+		return false, 0
+	}
+
+	// Set cookies via URLs matching their domains
+	// This ensures the cookie jar properly associates cookies with their domains
+	authURL := &url.URL{Scheme: "https", Host: authHost, Path: "/"}
+	for _, c := range cookies {
+		if c.Domain == authHost || c.Domain == "."+authHost || strings.HasSuffix(c.Domain, "."+authHost) {
+			jar.SetCookies(authURL, []*http.Cookie{c})
+		} else {
+			jar.SetCookies(u, []*http.Cookie{c})
+		}
+	}
+
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req.URL.Host == authHost {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get(targetURL)
+	if err != nil {
+		return false, 0
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK && resp.Request.URL.Host != authHost {
+		// Calculate minimum remaining validity
+		var minDuration time.Duration = 100000 * time.Hour // Start large
+		found := false
+		now := time.Now()
+
+		for _, c := range cookies {
+			if c.Expires.IsZero() {
+				continue
+			}
+			// Only consider cookies that haven't expired yet (though verify check implies they worked)
+			if c.Expires.After(now) {
+				d := c.Expires.Sub(now)
+				if d < minDuration {
+					minDuration = d
+					found = true
+				}
+			}
+		}
+		if !found {
+			minDuration = 0
+		}
+		return true, minDuration
+	}
+	return false, 0
+}
+
 // Jar wraps http.CookieJar with persistence to Netscape format.
 type Jar struct {
 	*cookiejar.Jar

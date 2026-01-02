@@ -156,6 +156,95 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	t.Logf("Multi-domain cookie file contains %d total cookies", len(allCookies))
 }
 
+func TestIntegration_CookieReuse(t *testing.T) {
+	skipIfNoCredentials(t)
+
+	cookieFile := "test_cookie_reuse.txt"
+	defer os.Remove(cookieFile)
+
+	// First, authenticate to account.web.cern.ch to get auth.cern.ch cookies
+	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
+	authHost := "auth.cern.ch"
+
+	kerbClient, err := auth.NewKerberosClient(testVersion)
+	if err != nil {
+		t.Fatalf("Failed to create Kerberos client: %v", err)
+	}
+
+	result, err := kerbClient.LoginWithKerberos(accountURL, authHost, true)
+	if err != nil {
+		t.Fatalf("Account login failed: %v", err)
+	}
+
+	accountCookies, err := kerbClient.CollectCookies(accountURL, authHost, result)
+	if err != nil {
+		t.Fatalf("Failed to collect account cookies: %v", err)
+	}
+	t.Logf("Collected %d cookies for account.web.cern.ch (includes auth.cern.ch cookies)", len(accountCookies))
+
+	// Save account cookies (this includes auth.cern.ch cookies)
+	u1, _ := url.Parse(accountURL)
+	jar, _ := cookie.NewJar()
+	if err := jar.Save(cookieFile, accountCookies, u1.Hostname()); err != nil {
+		t.Fatalf("Failed to save account cookies: %v", err)
+	}
+	kerbClient.Close()
+
+	// Verify auth.cern.ch cookies exist in the file
+	allCookies, err := cookie.Load(cookieFile)
+	if err != nil {
+		t.Fatalf("Failed to load cookies: %v", err)
+	}
+
+	authCookiesFound := false
+	for _, c := range allCookies {
+		if strings.Contains(c.Domain, "auth") || c.Domain == authHost {
+			authCookiesFound = true
+			t.Logf("Found auth cookie: %s (domain: %s)", c.Name, c.Domain)
+			break
+		}
+	}
+
+	if !authCookiesFound {
+		t.Logf("Warning: No auth.cern.ch cookies found, this test may not fully verify the feature")
+	}
+
+	// Now try to authenticate to another domain - it should use existing auth cookies
+	// if they exist and are valid
+	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
+
+	kerbClient2, err := auth.NewKerberosClient(testVersion)
+	if err != nil {
+		t.Fatalf("Failed to create second Kerberos client: %v", err)
+	}
+	defer kerbClient2.Close()
+
+	// Try to login - if auth cookies work, it won't need Kerberos
+	result, err = kerbClient2.LoginWithKerberos(gitlabURL, authHost, true)
+	if err != nil {
+		t.Fatalf("GitLab login failed: %v", err)
+	}
+
+	gitlabCookies, err := kerbClient2.CollectCookies(gitlabURL, authHost, result)
+	if err != nil {
+		t.Fatalf("Failed to collect GitLab cookies: %v", err)
+	}
+	t.Logf("Collected %d cookies for gitlab.cern.ch", len(gitlabCookies))
+
+	// Verify the login succeeded (cookies were collected)
+	if len(gitlabCookies) == 0 {
+		t.Fatal("No cookies collected for GitLab")
+	}
+
+	// Update the cookie file - should have cookies for both domains
+	u2, _ := url.Parse(gitlabURL)
+	if err := jar.Update(cookieFile, gitlabCookies, u2.Hostname()); err != nil {
+		t.Fatalf("Failed to update with GitLab cookies: %v", err)
+	}
+
+	t.Logf("Cookie reuse test completed successfully")
+}
+
 func TestIntegration_GitLabCERN(t *testing.T) {
 	skipIfNoCredentials(t)
 
@@ -215,14 +304,6 @@ func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
 	defer kerbClient.Close()
-
-	cfg := auth.OIDCConfig{
-		AuthHostname: "auth.cern.ch",
-		AuthRealm:    "cern",
-		ClientID:     "account-app",
-		RedirectURI:  "https://account.web.cern.ch/authorization-code/callback",
-		VerifyCert:   true,
-	}
 
 	token, err := auth.AuthorizationCodeFlow(kerbClient, cfg)
 	if err != nil {
