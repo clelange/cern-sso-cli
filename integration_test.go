@@ -31,7 +31,7 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 	defer os.Remove(cookieFile)
 
 	// Test cookie generation
-	kerbClient, err := auth.NewKerberosClient(testVersion)
+	kerbClient, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
 	authHost := "auth.cern.ch"
 
-	kerbClient, err := auth.NewKerberosClient(testVersion)
+	kerbClient, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	// Now authenticate to gitlab.cern.ch with a fresh client
 	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
 
-	kerbClient2, err := auth.NewKerberosClient(testVersion)
+	kerbClient2, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create second Kerberos client: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestIntegration_CookieReuse(t *testing.T) {
 	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
 	authHost := "auth.cern.ch"
 
-	kerbClient, err := auth.NewKerberosClient(testVersion)
+	kerbClient, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestIntegration_CookieReuse(t *testing.T) {
 	// if they exist and are valid
 	gitlabURL := "https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie"
 
-	kerbClient2, err := auth.NewKerberosClient(testVersion)
+	kerbClient2, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create second Kerberos client: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestIntegration_GitLabCERN(t *testing.T) {
 	defer os.Remove(cookieFile)
 
 	// Test cookie generation
-	kerbClient, err := auth.NewKerberosClient(testVersion)
+	kerbClient, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 		VerifyCert:   true,
 	}
 
-	kerbClient, err := auth.NewKerberosClient(testVersion)
+	kerbClient, err := auth.NewKerberosClient(testVersion, "")
 	if err != nil {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestIntegration_InvalidCredentials(t *testing.T) {
 	os.Setenv("KRB_PASSWORD", "wrong-password")
 	defer os.Setenv("KRB_PASSWORD", originalPassword)
 
-	_, err := auth.NewKerberosClient(testVersion)
+	_, err := auth.NewKerberosClient(testVersion, "")
 	if err == nil {
 		t.Fatal("Expected error with invalid credentials, got nil")
 	}

@@ -4,11 +4,96 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config"
 )
+
+func TestLoadKrb5Config_Embedded(t *testing.T) {
+	// Test empty string (default to embedded)
+	cfg, err := LoadKrb5Config("")
+	if err != nil {
+		t.Fatalf("Failed to load embedded config with empty string: %v", err)
+	}
+	if cfg.LibDefaults.DefaultRealm != "CERN.CH" {
+		t.Errorf("Expected default realm CERN.CH, got %s", cfg.LibDefaults.DefaultRealm)
+	}
+
+	// Test "embedded" explicitly
+	cfg, err = LoadKrb5Config(Krb5ConfigEmbedded)
+	if err != nil {
+		t.Fatalf("Failed to load embedded config: %v", err)
+	}
+	if cfg.LibDefaults.DefaultRealm != "CERN.CH" {
+		t.Errorf("Expected default realm CERN.CH, got %s", cfg.LibDefaults.DefaultRealm)
+	}
+}
+
+func TestLoadKrb5Config_CustomPath(t *testing.T) {
+	// Create a temporary krb5.conf file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "krb5.conf")
+	configContent := `[libdefaults]
+    default_realm = TEST.REALM
+    dns_lookup_kdc = true
+
+[realms]
+    TEST.REALM = {
+        kdc = kdc.test.realm
+    }
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadKrb5Config(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load custom config: %v", err)
+	}
+	if cfg.LibDefaults.DefaultRealm != "TEST.REALM" {
+		t.Errorf("Expected default realm TEST.REALM, got %s", cfg.LibDefaults.DefaultRealm)
+	}
+}
+
+func TestLoadKrb5Config_NonexistentPath(t *testing.T) {
+	_, err := LoadKrb5Config("/nonexistent/path/krb5.conf")
+	if err == nil {
+		t.Error("Expected error for nonexistent path, got nil")
+	}
+}
+
+func TestLoadKrb5Config_System(t *testing.T) {
+	// Create a temporary krb5.conf and set KRB5_CONFIG to point to it
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "krb5.conf")
+	configContent := `[libdefaults]
+    default_realm = SYSTEM.TEST
+    dns_lookup_kdc = true
+
+[realms]
+    SYSTEM.TEST = {
+        kdc = kdc.system.test
+    }
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set KRB5_CONFIG environment variable
+	oldVal := os.Getenv("KRB5_CONFIG")
+	os.Setenv("KRB5_CONFIG", configPath)
+	defer os.Setenv("KRB5_CONFIG", oldVal)
+
+	cfg, err := LoadKrb5Config(Krb5ConfigSystem)
+	if err != nil {
+		t.Fatalf("Failed to load system config via KRB5_CONFIG: %v", err)
+	}
+	if cfg.LibDefaults.DefaultRealm != "SYSTEM.TEST" {
+		t.Errorf("Expected default realm SYSTEM.TEST, got %s", cfg.LibDefaults.DefaultRealm)
+	}
+}
 
 func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 	// Set up credentials for the test

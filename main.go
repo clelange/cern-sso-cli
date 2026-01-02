@@ -23,6 +23,7 @@ const (
 var version = "dev"
 
 var quiet bool
+var krb5Config string
 
 func logInfo(format string, args ...interface{}) {
 	if !quiet {
@@ -37,15 +38,22 @@ func logPrintln(args ...interface{}) {
 }
 
 func main() {
-	// Check for --quiet flag first (can appear anywhere in args)
-	for i, arg := range os.Args {
+	// Check for --quiet and --krb5-config flags first (can appear anywhere in args)
+	var newArgs []string
+	for i := 0; i < len(os.Args); i++ {
+		arg := os.Args[i]
 		if arg == "--quiet" || arg == "-q" {
 			quiet = true
-			// Remove the flag from args so it doesn't interfere with subcommand parsing
-			os.Args = append(os.Args[:i], os.Args[i+1:]...)
-			break
+		} else if arg == "--krb5-config" && i+1 < len(os.Args) {
+			krb5Config = os.Args[i+1]
+			i++ // Skip the next arg (the value)
+		} else if len(arg) > 14 && arg[:14] == "--krb5-config=" {
+			krb5Config = arg[14:]
+		} else {
+			newArgs = append(newArgs, arg)
 		}
 	}
+	os.Args = newArgs
 
 	// Subcommands
 	cookieCmd := flag.NewFlagSet("cookie", flag.ExitOnError)
@@ -152,9 +160,14 @@ func printUsage() {
 	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern]")
 	fmt.Println("  cern-sso-cli status [--file cookies.txt] [--json]")
 	fmt.Println()
+	fmt.Println("Global flags:")
+	fmt.Println("  --quiet, -q           Suppress non-essential output")
+	fmt.Println("  --krb5-config <src>   Kerberos config source: 'embedded' (default), 'system', or file path")
+	fmt.Println()
 	fmt.Println("Environment variables:")
-	fmt.Println("  KRB_USERNAME  Kerberos username")
-	fmt.Println("  KRB_PASSWORD  Kerberos password")
+	fmt.Println("  KRB_USERNAME   Kerberos username")
+	fmt.Println("  KRB_PASSWORD   Kerberos password")
+	fmt.Println("  KRB5_CONFIG    System krb5.conf path (used with --krb5-config system)")
 }
 
 func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
@@ -247,7 +260,7 @@ func formatDuration(d time.Duration) string {
 
 func getToken(redirectURL, clientID, authHost, realm string) {
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClient(version)
+	kerbClient, err := auth.NewKerberosClient(version, krb5Config)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
@@ -296,7 +309,7 @@ func deviceLogin(clientID, authHost, realm string) {
 // tryAuthCookies attempts to authenticate using existing auth cookies.
 // Returns (success, result, client) tuple.
 func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, *auth.LoginResult, *auth.KerberosClient) {
-	kerbClient, err := auth.NewKerberosClient(version)
+	kerbClient, err := auth.NewKerberosClient(version, krb5Config)
 	if err != nil {
 		logInfo("Warning: Failed to create Kerberos client for cookie attempt: %v", err)
 		return false, nil, nil
@@ -341,7 +354,7 @@ func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost stri
 // authenticateWithKerberos performs full Kerberos authentication flow.
 func authenticateWithKerberos(targetURL, filename, authHost string) {
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClient(version)
+	kerbClient, err := auth.NewKerberosClient(version, krb5Config)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}

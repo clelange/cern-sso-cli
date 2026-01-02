@@ -137,6 +137,7 @@ Use `--json` flag for machine-readable output:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
+| `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
 
 ### Cookie Command
 
@@ -175,6 +176,16 @@ Use `--json` flag for machine-readable output:
 
 - Valid CERN credentials
 - Network access to CERN Kerberos (cerndc.cern.ch) and SSO (auth.cern.ch)
+- **Optional**: System krb5.conf (only needed if using `--krb5-config system`)
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `KRB_USERNAME` | Kerberos username (fallback if no credential cache) |
+| `KRB_PASSWORD` | Kerberos password |
+| `KRB5CCNAME` | Path to Kerberos credential cache |
+| `KRB5_CONFIG` | Path to system krb5.conf (used with `--krb5-config system`) |
 
 ## Comparison to Python Version
 

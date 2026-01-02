@@ -40,6 +40,62 @@ const defaultKrb5Conf = `[libdefaults]
     cern.ch = CERN.CH
 `
 
+// Krb5ConfigSource constants for config source options.
+const (
+	Krb5ConfigEmbedded = "embedded"
+	Krb5ConfigSystem   = "system"
+)
+
+// LoadKrb5Config loads Kerberos configuration from the specified source.
+// source can be:
+//   - "" or "embedded": use the built-in CERN.CH configuration
+//   - "system": use system krb5.conf (KRB5_CONFIG env var or /etc/krb5.conf)
+//   - "/path/to/file": use a custom configuration file
+func LoadKrb5Config(source string) (*config.Config, error) {
+	switch source {
+	case "", Krb5ConfigEmbedded:
+		return config.NewFromString(defaultKrb5Conf)
+
+	case Krb5ConfigSystem:
+		// Check KRB5_CONFIG environment variable first
+		configPath := os.Getenv("KRB5_CONFIG")
+		if configPath == "" {
+			// Fall back to default system path
+			if runtime.GOOS == "darwin" {
+				// macOS: check common locations
+				paths := []string{"/etc/krb5.conf", "/Library/Preferences/edu.mit.Kerberos"}
+				for _, p := range paths {
+					if _, err := os.Stat(p); err == nil {
+						configPath = p
+						break
+					}
+				}
+			} else {
+				configPath = "/etc/krb5.conf"
+			}
+		}
+		if configPath == "" {
+			return nil, fmt.Errorf("no system krb5.conf found")
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load system krb5.conf from %s: %w", configPath, err)
+		}
+		return cfg, nil
+
+	default:
+		// Treat as a file path
+		if _, err := os.Stat(source); err != nil {
+			return nil, fmt.Errorf("krb5.conf not found at %s: %w", source, err)
+		}
+		cfg, err := config.Load(source)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load krb5.conf from %s: %w", source, err)
+		}
+		return cfg, nil
+	}
+}
+
 // KerberosClient handles Kerberos authentication.
 type KerberosClient struct {
 	krbClient        *client.Client
@@ -54,8 +110,9 @@ type KerberosClient struct {
 // on Linux and macOS with file-based caches. If no valid ccache is found,
 // it falls back to username/password authentication using KRB_USERNAME and
 // KRB_PASSWORD environment variables.
-func NewKerberosClient(version string) (*KerberosClient, error) {
-	cfg, err := config.NewFromString(defaultKrb5Conf)
+// krb5ConfigSource can be "embedded" (default), "system", or a file path.
+func NewKerberosClient(version string, krb5ConfigSource string) (*KerberosClient, error) {
+	cfg, err := LoadKrb5Config(krb5ConfigSource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
 	}
