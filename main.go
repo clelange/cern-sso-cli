@@ -26,6 +26,7 @@ var version = "dev"
 var quiet bool
 var krb5Config string
 var krbUser string
+var insecure bool
 
 func logInfo(format string, args ...interface{}) {
 	if !quiet {
@@ -56,6 +57,8 @@ func main() {
 			i++ // Skip the next arg (the value)
 		} else if len(arg) > 7 && arg[:7] == "--user=" {
 			krbUser = arg[7:]
+		} else if arg == "--insecure" || arg == "-k" {
+			insecure = true
 		} else {
 			newArgs = append(newArgs, arg)
 		}
@@ -73,21 +76,29 @@ func main() {
 	cookieFile := cookieCmd.String("file", "cookies.txt", "Output cookie file")
 	cookieAuthHost := cookieCmd.String("auth-host", defaultAuthHostname, "Authentication hostname")
 	cookieForce := cookieCmd.Bool("force", false, "Force refresh of cookies, bypassing validation")
+	cookieInsecure := cookieCmd.Bool("insecure", false, "Skip certificate validation (also via global --insecure)")
+	cookieK := cookieCmd.Bool("k", false, "Skip certificate validation (shorthand)")
 
 	// Token command flags
 	tokenURL := tokenCmd.String("url", "", "Redirect URI for OAuth")
 	tokenClientID := tokenCmd.String("client-id", "", "OAuth client ID")
 	tokenAuthHost := tokenCmd.String("auth-host", defaultAuthHostname, "Authentication hostname")
 	tokenAuthRealm := tokenCmd.String("realm", defaultAuthRealm, "Authentication realm")
+	tokenInsecure := tokenCmd.Bool("insecure", false, "Skip certificate validation (also via global --insecure)")
+	tokenK := tokenCmd.Bool("k", false, "Skip certificate validation (shorthand)")
 
 	// Device command flags
 	deviceClientID := deviceCmd.String("client-id", "", "OAuth client ID")
 	deviceAuthHost := deviceCmd.String("auth-host", defaultAuthHostname, "Authentication hostname")
 	deviceAuthRealm := deviceCmd.String("realm", defaultAuthRealm, "Authentication realm")
+	deviceInsecure := deviceCmd.Bool("insecure", false, "Skip certificate validation (also via global --insecure)")
+	deviceK := deviceCmd.Bool("k", false, "Skip certificate validation (shorthand)")
 
 	// Status command flags
 	statusFile := statusCmd.String("file", "cookies.txt", "Cookie file to check")
 	statusJSON := statusCmd.Bool("json", false, "Output as JSON")
+	statusInsecure := statusCmd.Bool("insecure", false, "Skip certificate validation (also via global --insecure)")
+	statusK := statusCmd.Bool("k", false, "Skip certificate validation (shorthand)")
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -108,12 +119,18 @@ func main() {
 		if *cookieURL == "" {
 			log.Fatal("--url is required")
 		}
+		if *cookieInsecure || *cookieK {
+			insecure = true
+		}
 		saveCookie(*cookieURL, *cookieFile, *cookieAuthHost, *cookieForce)
 
 	case "token":
 		tokenCmd.Parse(os.Args[2:])
 		if *tokenURL == "" || *tokenClientID == "" {
 			log.Fatal("--url and --client-id are required")
+		}
+		if *tokenInsecure || *tokenK {
+			insecure = true
 		}
 		getToken(*tokenURL, *tokenClientID, *tokenAuthHost, *tokenAuthRealm)
 
@@ -122,10 +139,16 @@ func main() {
 		if *deviceClientID == "" {
 			log.Fatal("--client-id is required")
 		}
+		if *deviceInsecure || *deviceK {
+			insecure = true
+		}
 		deviceLogin(*deviceClientID, *deviceAuthHost, *deviceAuthRealm)
 
 	case "status":
 		statusCmd.Parse(os.Args[2:])
+		if *statusInsecure || *statusK {
+			insecure = true
+		}
 		cookies, err := cookie.Load(*statusFile)
 		if err != nil {
 			log.Fatalf("Failed to load cookies from %s: %v", *statusFile, err)
@@ -162,13 +185,14 @@ func printUsage() {
 	fmt.Println("CERN SSO Authentication Tool")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch] [--force]")
-	fmt.Println("  cern-sso-cli token --url <URL> --client-id <ID> [--realm cern]")
-	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern]")
-	fmt.Println("  cern-sso-cli status [--file cookies.txt] [--json]")
+	fmt.Println("  cern-sso-cli cookie --url <URL> [--file cookies.txt] [--auth-host auth.cern.ch] [--force] [--insecure]")
+	fmt.Println("  cern-sso-cli token --url <URL> --client-id <ID> [--realm cern] [--insecure]")
+	fmt.Println("  cern-sso-cli device --client-id <ID> [--realm cern] [--insecure]")
+	fmt.Println("  cern-sso-cli status [--file cookies.txt] [--json] [--insecure]")
 	fmt.Println()
 	fmt.Println("Global flags:")
 	fmt.Println("  --quiet, -q           Suppress non-essential output")
+	fmt.Println("  --insecure, -k        Skip certificate validation")
 	fmt.Println("  --user, -u <name>     Use specific Kerberos principal (e.g., clange or clange@CERN.CH)")
 	fmt.Println("  --krb5-config <src>   Kerberos config source: 'embedded' (default), 'system', or file path")
 	fmt.Println()
@@ -247,7 +271,7 @@ func saveCookie(targetURL, filename, authHost string, forceRefresh bool) {
 
 		if len(domainCookies) > 0 {
 			logInfo("Checking validity of %d existing cookies for %s...", len(domainCookies), targetDomain)
-			if valid, duration := cookie.VerifyCookies(targetURL, authHost, domainCookies); valid {
+			if valid, duration := cookie.VerifyCookies(targetURL, authHost, domainCookies, !insecure); valid {
 				logInfo("Existing cookies are valid for another %v. Reusing them.", formatDuration(duration))
 				jar, err := cookie.NewJar()
 				if err != nil {
@@ -289,7 +313,7 @@ func formatDuration(d time.Duration) string {
 
 func getToken(redirectURL, clientID, authHost, realm string) {
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser)
+	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
@@ -318,7 +342,7 @@ func deviceLogin(clientID, authHost, realm string) {
 		AuthHostname: authHost,
 		AuthRealm:    realm,
 		ClientID:     clientID,
-		VerifyCert:   true,
+		VerifyCert:   !insecure,
 		Quiet:        quiet,
 	}
 
@@ -338,7 +362,7 @@ func deviceLogin(clientID, authHost, realm string) {
 // tryAuthCookies attempts to authenticate using existing auth cookies.
 // Returns (success, result, client) tuple.
 func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie) (bool, *auth.LoginResult, *auth.KerberosClient) {
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser)
+	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
 	if err != nil {
 		logInfo("Warning: Failed to create Kerberos client for cookie attempt: %v", err)
 		return false, nil, nil
@@ -395,14 +419,14 @@ func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost stri
 // authenticateWithKerberos performs full Kerberos authentication flow.
 func authenticateWithKerberos(targetURL, filename, authHost string) {
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser)
+	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
 	if err != nil {
 		log.Fatalf("Failed to initialize Kerberos: %v", err)
 	}
 	defer kerbClient.Close()
 
 	logPrintln("Logging in with Kerberos...")
-	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
+	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)
 	if err != nil {
 		log.Fatalf("Login failed: %v", err)
 	}

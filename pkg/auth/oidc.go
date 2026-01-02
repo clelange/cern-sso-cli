@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -71,7 +72,8 @@ func AuthorizationCodeFlow(kerbClient *KerberosClient, cfg OIDCConfig) (string, 
 		cfg.AuthHostname, cfg.AuthRealm,
 	)
 
-	resp, err := http.PostForm(tokenURL, url.Values{
+	client := kerbClient.GetHTTPClient()
+	resp, err := client.PostForm(tokenURL, url.Values{
 		"client_id":    {cfg.ClientID},
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
@@ -106,7 +108,13 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 		cfg.AuthHostname, cfg.AuthRealm,
 	)
 
-	resp, err := http.PostForm(deviceURL, url.Values{
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert},
+		},
+	}
+
+	resp, err := client.PostForm(deviceURL, url.Values{
 		"client_id":             {cfg.ClientID},
 		"code_challenge_method": {"S256"},
 		"code_challenge":        {codeChallenge},
@@ -165,7 +173,8 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 
 		time.Sleep(pollInterval)
 
-		tokenResp, err := http.PostForm(tokenURL, url.Values{
+		time.Sleep(pollInterval)
+		resp, err := client.PostForm(tokenURL, url.Values{
 			"client_id":     {cfg.ClientID},
 			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
 			"device_code":   {deviceResp.DeviceCode},
@@ -176,13 +185,13 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 			continue
 		}
 
-		if tokenResp.StatusCode == http.StatusOK {
+		if resp.StatusCode == http.StatusOK {
 			var token TokenResponse
-			if err := parseJSONResponse(tokenResp, &token); err != nil {
-				tokenResp.Body.Close()
+			if err := parseJSONResponse(resp, &token); err != nil {
+				resp.Body.Close()
 				return nil, err
 			}
-			tokenResp.Body.Close()
+			resp.Body.Close()
 			return &token, nil
 		}
 
@@ -191,11 +200,11 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 			Error            string `json:"error"`
 			ErrorDescription string `json:"error_description"`
 		}
-		if err := parseJSONResponse(tokenResp, &errorResp); err != nil {
-			tokenResp.Body.Close()
+		if err := parseJSONResponse(resp, &errorResp); err != nil {
+			resp.Body.Close()
 			continue
 		}
-		tokenResp.Body.Close()
+		resp.Body.Close()
 
 		switch errorResp.Error {
 		case "authorization_pending":
@@ -226,7 +235,13 @@ func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenRespons
 		cfg.AuthHostname, cfg.AuthRealm,
 	)
 
-	resp, err := http.PostForm(tokenURL, url.Values{
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert},
+		},
+	}
+
+	resp, err := client.PostForm(tokenURL, url.Values{
 		"client_id":            {cfg.ClientID},
 		"audience":             {audience},
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
