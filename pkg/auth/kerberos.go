@@ -227,13 +227,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 	}
 
 	// Normalize username for storage
-	if !strings.Contains(username, "@") {
-		username = username + "@CERN.CH"
-	}
-	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
-		parts := strings.Split(username, "@")
-		username = parts[0] + "@CERN.CH"
-	}
+	username = NormalizePrincipal(username)
 	return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, username)
 }
 

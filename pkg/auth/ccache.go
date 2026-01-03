@@ -14,6 +14,26 @@ import (
 	"github.com/jcmturner/gokrb5/v8/credentials"
 )
 
+// NormalizePrincipal ensures the username has @CERN.CH suffix with correct case.
+// Examples:
+//   - "clange" -> "clange@CERN.CH"
+//   - "clange@cern.ch" -> "clange@CERN.CH"
+//   - "clange@CERN.CH" -> "clange@CERN.CH" (unchanged)
+//   - "" -> "" (empty string returns empty)
+func NormalizePrincipal(username string) string {
+	if username == "" {
+		return ""
+	}
+	if !strings.Contains(username, "@") {
+		username = username + "@CERN.CH"
+	}
+	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
+		parts := strings.Split(username, "@")
+		username = parts[0] + "@CERN.CH"
+	}
+	return username
+}
+
 // FindCCachePath locates the Kerberos credential cache file.
 // Returns empty string if no usable file-based cache is found.
 func FindCCachePath() string {
@@ -262,15 +282,8 @@ func parseKlistExpiry(s string) (time.Time, error) {
 // The username can be provided with or without the @CERN.CH suffix.
 // Returns error if no matching cache is found.
 func FindCacheByUsername(username string) (*CacheInfo, error) {
-	// Normalize username to include @CERN.CH
-	if !strings.Contains(username, "@") {
-		username = username + "@CERN.CH"
-	}
-	// Ensure it's uppercase for CERN.CH realm
-	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
-		parts := strings.Split(username, "@")
-		username = parts[0] + "@CERN.CH"
-	}
+	// Normalize username to include @CERN.CH with correct case
+	username = NormalizePrincipal(username)
 
 	caches, err := ListCERNCaches()
 	if err != nil {
