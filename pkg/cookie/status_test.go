@@ -22,7 +22,7 @@ func TestPrintStatusTable_ValidCookie(t *testing.T) {
 	cookies := []*http.Cookie{validCookie}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 	if !strings.Contains(output, "test_cookie") {
@@ -52,7 +52,7 @@ func TestPrintStatusTable_ExpiredCookie(t *testing.T) {
 	cookies := []*http.Cookie{expiredCookie}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 	if !strings.Contains(output, "expired_cookie") {
@@ -79,7 +79,7 @@ func TestPrintStatusTable_SessionCookie(t *testing.T) {
 	cookies := []*http.Cookie{sessionCookie}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 	if !strings.Contains(output, "session_cookie") {
@@ -123,7 +123,7 @@ func TestPrintStatusTable_MultipleCookies(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 	validCount := strings.Count(output, "✓")
@@ -148,7 +148,7 @@ func TestPrintStatusTable_NoCookies(t *testing.T) {
 	cookies := []*http.Cookie{}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 	if !strings.Contains(output, "No cookies found") {
@@ -186,7 +186,7 @@ func TestPrintStatusTable_LongCookieName(t *testing.T) {
 	cookies := []*http.Cookie{shortNameCookie, longNameCookie, exactly32Cookie}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -238,7 +238,7 @@ func TestPrintStatusTable_LongPath(t *testing.T) {
 	cookies := []*http.Cookie{shortPathCookie, longPathCookie, exactly22PathCookie}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -295,7 +295,7 @@ func TestPrintStatusTable_SortedByDomain(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	printStatusTable(cookies, &buf)
+	printStatusTable(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -340,7 +340,7 @@ func TestPrintStatusJSON_ValidCookie(t *testing.T) {
 	cookies := []*http.Cookie{validCookie}
 
 	var buf bytes.Buffer
-	printStatusJSON(cookies, &buf)
+	printStatusJSON(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -373,7 +373,7 @@ func TestPrintStatusJSON_SessionCookie(t *testing.T) {
 	cookies := []*http.Cookie{sessionCookie}
 
 	var buf bytes.Buffer
-	printStatusJSON(cookies, &buf)
+	printStatusJSON(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -400,7 +400,7 @@ func TestPrintStatusJSON_ExpiredCookie(t *testing.T) {
 	cookies := []*http.Cookie{expiredCookie}
 
 	var buf bytes.Buffer
-	printStatusJSON(cookies, &buf)
+	printStatusJSON(cookies, false, false, &buf)
 
 	output := buf.String()
 
@@ -416,11 +416,131 @@ func TestPrintStatusJSON_EmptyCookies(t *testing.T) {
 	cookies := []*http.Cookie{}
 
 	var buf bytes.Buffer
-	printStatusJSON(cookies, &buf)
+	printStatusJSON(cookies, false, false, &buf)
 
 	output := buf.String()
 
 	if output != "[]\n" {
 		t.Errorf("Expected empty JSON array, got: %q", output)
+	}
+}
+
+func TestPrintStatusTable_WithVerification_Valid(t *testing.T) {
+	now := time.Now()
+	validCookie := &http.Cookie{
+		Name:    "test_cookie",
+		Value:   "test_value",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(24 * time.Hour),
+		Secure:  true,
+	}
+
+	cookies := []*http.Cookie{validCookie}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, true, true, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, "Verification: ✓ Cookies verified by HTTP request") {
+		t.Error("Output should show verification success message")
+	}
+	if !strings.Contains(output, "test_cookie") {
+		t.Error("Output should contain cookie name")
+	}
+}
+
+func TestPrintStatusTable_WithVerification_Failed(t *testing.T) {
+	now := time.Now()
+	validCookie := &http.Cookie{
+		Name:    "test_cookie",
+		Value:   "test_value",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(24 * time.Hour),
+		Secure:  true,
+	}
+
+	cookies := []*http.Cookie{validCookie}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, true, false, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, "Verification: ✗ Cookies failed HTTP verification") {
+		t.Error("Output should show verification failure message")
+	}
+}
+
+func TestPrintStatusTable_NoVerification(t *testing.T) {
+	now := time.Now()
+	validCookie := &http.Cookie{
+		Name:    "test_cookie",
+		Value:   "test_value",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(24 * time.Hour),
+		Secure:  true,
+	}
+
+	cookies := []*http.Cookie{validCookie}
+
+	var buf bytes.Buffer
+	printStatusTable(cookies, false, false, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, "Note: Only checking expiry times (use --url to verify with HTTP request)") {
+		t.Error("Output should show note about expiry-only checking")
+	}
+}
+
+func TestPrintStatusJSON_WithVerification(t *testing.T) {
+	now := time.Now()
+	validCookie := &http.Cookie{
+		Name:    "test_cookie",
+		Value:   "test_value",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(24 * time.Hour),
+		Secure:  true,
+	}
+
+	cookies := []*http.Cookie{validCookie}
+
+	var buf bytes.Buffer
+	printStatusJSON(cookies, true, true, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, `"verified": true`) {
+		t.Error("JSON should show verified as true")
+	}
+	if !strings.Contains(output, `"verified_valid": true`) {
+		t.Error("JSON should show verified_valid as true")
+	}
+}
+
+func TestPrintStatusJSON_NoVerification(t *testing.T) {
+	now := time.Now()
+	validCookie := &http.Cookie{
+		Name:    "test_cookie",
+		Value:   "test_value",
+		Domain:  "example.com",
+		Path:    "/",
+		Expires: now.Add(24 * time.Hour),
+		Secure:  true,
+	}
+
+	cookies := []*http.Cookie{validCookie}
+
+	var buf bytes.Buffer
+	printStatusJSON(cookies, false, false, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, `"verified": false`) {
+		t.Error("JSON should show verified as false")
+	}
+	// verified_valid should be omitted when verified is false
+	if strings.Contains(output, `"verified_valid"`) {
+		t.Error("JSON should not include verified_valid when not verified")
 	}
 }
