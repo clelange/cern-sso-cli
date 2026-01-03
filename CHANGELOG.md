@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/clelange/cern-sso-cli/compare/v0.13.0...v0.14.0) (2026-01-03)
+
+
+### Features
+
+* **status:** add HTTP verification option for cookie status checks ([#33](https://github.com/clelange/cern-sso-cli/issues/33)) ([deeaf36](https://github.com/clelange/cern-sso-cli/commit/deeaf36106063ba9efe4f86cf6c67e38032c6082))
+
 ## [0.13.0](https://github.com/clelange/cern-sso-cli/compare/v0.12.2...v0.13.0) (2026-01-03)
 
 
