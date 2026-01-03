@@ -378,8 +378,11 @@ func saveCookies(client *auth.KerberosClient, filename, targetURL, authHost stri
 		return
 	}
 
-	// Normalize username for storage
-	username := krbUser
+	// Use username from the login result, or fall back to krbUser
+	username := result.Username
+	if username == "" {
+		username = krbUser
+	}
 	if username != "" {
 		if !strings.Contains(username, "@") {
 			username = username + "@CERN.CH"
