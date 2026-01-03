@@ -176,3 +176,67 @@ func ParseForm(r io.Reader) (action string, data url.Values, err error) {
 
 	return action, data, nil
 }
+
+// OTPForm represents the structure of an OTP login form.
+type OTPForm struct {
+	Action       string            // Form action URL
+	HiddenFields map[string]string // Hidden input fields (CSRF tokens, etc.)
+	OTPField     string            // Name of the OTP input field
+	SubmitName   string            // Submit button name
+	SubmitValue  string            // Submit button value
+}
+
+// ParseOTPForm extracts the OTP form details from the CERN 2FA page.
+func ParseOTPForm(r io.Reader) (*OTPForm, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	form := doc.Find("#kc-otp-login-form")
+	if form.Length() == 0 {
+		return nil, errors.New("OTP form not found")
+	}
+
+	action, exists := form.Attr("action")
+	if !exists {
+		return nil, errors.New("OTP form has no action")
+	}
+
+	otpForm := &OTPForm{
+		Action:       action,
+		HiddenFields: make(map[string]string),
+	}
+
+	// Find all hidden input fields
+	form.Find("input[type='hidden']").Each(func(i int, s *goquery.Selection) {
+		name, _ := s.Attr("name")
+		value, _ := s.Attr("value")
+		if name != "" {
+			otpForm.HiddenFields[name] = value
+		}
+	})
+
+	// Find OTP input field (exact match for name="otp")
+	otpFieldFound := false
+	form.Find("input[name='otp']").Each(func(i int, s *goquery.Selection) {
+		if !otpFieldFound {
+			otpForm.OTPField = "otp"
+			otpFieldFound = true
+		}
+	})
+
+	if !otpFieldFound {
+		return nil, errors.New("OTP input field not found")
+	}
+
+	// Find submit button
+	form.Find("input[type='submit']").Each(func(i int, s *goquery.Selection) {
+		if otpForm.SubmitName == "" {
+			otpForm.SubmitName, _ = s.Attr("name")
+			otpForm.SubmitValue, _ = s.Attr("value")
+		}
+	})
+
+	return otpForm, nil
+}
