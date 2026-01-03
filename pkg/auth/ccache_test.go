@@ -101,3 +101,26 @@ func TestConvertAPICacheToFile_WithFileCache(t *testing.T) {
 		t.Errorf("Expected 'not using macOS API cache' error, got: %v", err)
 	}
 }
+
+func TestNormalizePrincipal(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"alice", "alice@CERN.CH"},
+		{"alice@CERN.CH", "alice@CERN.CH"},
+		{"alice@cern.ch", "alice@CERN.CH"},
+		{"BOB@cern.ch", "BOB@CERN.CH"},
+		{"bob", "bob@CERN.CH"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			result := NormalizePrincipal(tc.input)
+			if result != tc.expected {
+				t.Errorf("NormalizePrincipal(%q) = %q, want %q", tc.input, result, tc.expected)
+			}
+		})
+	}
+}

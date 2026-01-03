@@ -4,9 +4,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
+	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -95,16 +95,7 @@ func formatDuration(d time.Duration) string {
 }
 
 // normalizeUsername ensures the username has @CERN.CH suffix with correct case.
+// This is a convenience wrapper around auth.NormalizePrincipal.
 func normalizeUsername(username string) string {
-	if username == "" {
-		return ""
-	}
-	if !strings.Contains(username, "@") {
-		username = username + "@CERN.CH"
-	}
-	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
-		parts := strings.Split(username, "@")
-		username = parts[0] + "@CERN.CH"
-	}
-	return username
+	return auth.NormalizePrincipal(username)
 }
