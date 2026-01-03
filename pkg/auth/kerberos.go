@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config"
 	"github.com/jcmturner/gokrb5/v8/spnego"
@@ -278,10 +279,26 @@ func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, v
 		username:         username,
 	}
 
+	// Build TLS config
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: !verifyCert,
+	}
+
+	// When verifying certs, use system certs plus embedded CERN CA certificates
+	if verifyCert {
+		certPool, err := certs.GetSystemWithCERNCertPool()
+		if err != nil {
+			// Fall back to just system certs if CERN certs fail to load
+			// This shouldn't happen with embedded certs, but be defensive
+			certPool = nil
+		}
+		tlsConfig.RootCAs = certPool
+	}
+
 	// Create a custom transport that intercepts cookies from responses
 	customTransport := &cookieInterceptTransport{
 		base: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert},
+			TLSClientConfig: tlsConfig,
 		},
 		client: kc,
 	}
