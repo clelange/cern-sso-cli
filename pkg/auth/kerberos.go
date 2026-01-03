@@ -683,7 +683,44 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		authBodyStr := string(authBody)
 
 		if Check2FARequired(authBodyStr) {
-			return nil, &LoginError{Message: "2FA authentication required (not supported)"}
+			otpForm, err := ParseOTPForm(bytes.NewReader(authBody))
+			if err != nil {
+				return nil, &LoginError{Message: fmt.Sprintf("failed to parse OTP form: %v", err)}
+			}
+
+			otpCode, err := promptForOTP()
+			if err != nil {
+				return nil, &LoginError{Message: fmt.Sprintf("failed to read OTP: %v", err)}
+			}
+
+			formData := url.Values{}
+			for k, v := range otpForm.HiddenFields {
+				formData.Set(k, v)
+			}
+			formData.Set(otpForm.OTPField, otpCode)
+			if otpForm.SubmitName != "" {
+				formData.Set(otpForm.SubmitName, otpForm.SubmitValue)
+			}
+
+			otpResp, err := k.httpClient.PostForm(otpForm.Action, formData)
+			if err != nil {
+				return nil, &LoginError{Message: fmt.Sprintf("failed to submit OTP: %v", err)}
+			}
+			defer otpResp.Body.Close()
+
+			otpBody, _ := io.ReadAll(otpResp.Body)
+			otpBodyStr := string(otpBody)
+
+			if Check2FARequired(otpBodyStr) {
+				return nil, &LoginError{Message: "Invalid OTP code. Please try again."}
+			}
+
+			if errMsg, _ := GetErrorMessageFromHTML(bytes.NewReader(otpBody)); errMsg != "" {
+				return nil, &LoginError{Message: errMsg}
+			}
+
+			authResp = otpResp
+			continue
 		}
 
 		if CheckConsentRequired(authBodyStr) {
@@ -767,6 +804,26 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		Cookies:     k.GetCookies(authResp.Request.URL),
 		RedirectURI: redirectURI,
 	}, nil
+}
+
+// promptForOTP prompts the user for a 6-digit OTP code.
+func promptForOTP() (string, error) {
+	fmt.Print("Enter your 6-digit OTP code: ")
+	var code string
+	_, err := fmt.Scanln(&code)
+	if err != nil {
+		return "", fmt.Errorf("failed to read input: %v", err)
+	}
+	code = strings.TrimSpace(code)
+	if len(code) != 6 {
+		return "", fmt.Errorf("OTP must be 6 digits")
+	}
+	for _, c := range code {
+		if c < '0' || c > '9' {
+			return "", fmt.Errorf("OTP must contain only digits")
+		}
+	}
+	return code, nil
 }
 
 // CollectCookies collects all cookies from the session with full attributes.

@@ -104,3 +104,94 @@ func TestParseGitLabOIDCForm(t *testing.T) {
 		t.Errorf("Expected other_field %q, got %q", "other_value", data.Get("other_field"))
 	}
 }
+
+func TestParseOTPForm(t *testing.T) {
+	html := `
+		<html>
+			<body>
+				<form id="kc-otp-login-form" 
+				      action="https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test" 
+				      method="post">
+					<input id="otp" name="otp" type="text" autocomplete="one-time-code" />
+					<input name="login" id="kc-login" type="submit" value="Sign In" />
+				</form>
+			</body>
+		</html>`
+
+	form, err := ParseOTPForm(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseOTPForm failed: %v", err)
+	}
+
+	expectedAction := "https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test"
+	if form.Action != expectedAction {
+		t.Errorf("Expected action %q, got %q", expectedAction, form.Action)
+	}
+
+	if form.OTPField != "otp" {
+		t.Errorf("Expected OTP field 'otp', got %q", form.OTPField)
+	}
+
+	if form.SubmitName != "login" {
+		t.Errorf("Expected submit name 'login', got %q", form.SubmitName)
+	}
+
+	if form.SubmitValue != "Sign In" {
+		t.Errorf("Expected submit value 'Sign In', got %q", form.SubmitValue)
+	}
+
+	if len(form.HiddenFields) != 0 {
+		t.Errorf("Expected no hidden fields, got %d", len(form.HiddenFields))
+	}
+}
+
+func TestParseOTPForm_MissingForm(t *testing.T) {
+	html := `
+		<html>
+			<body>
+				<form id="other-form">
+					<input name="otp" type="text" />
+				</form>
+			</body>
+		</html>`
+
+	_, err := ParseOTPForm(strings.NewReader(html))
+	if err == nil {
+		t.Fatal("Expected error for missing OTP form, got nil")
+	}
+
+	if err.Error() != "OTP form not found" {
+		t.Errorf("Expected error 'OTP form not found', got %q", err.Error())
+	}
+}
+
+func TestParseOTPForm_WithHiddenFields(t *testing.T) {
+	html := `
+		<html>
+			<body>
+				<form id="kc-otp-login-form" action="/submit" method="post">
+					<input type="hidden" name="csrf_token" value="secret123" />
+					<input type="hidden" name="session_id" value="abc456" />
+					<input name="otp" type="text" />
+					<input type="submit" value="Submit" />
+				</form>
+			</body>
+		</html>`
+
+	form, err := ParseOTPForm(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseOTPForm failed: %v", err)
+	}
+
+	if form.HiddenFields["csrf_token"] != "secret123" {
+		t.Errorf("Expected csrf_token 'secret123', got %q", form.HiddenFields["csrf_token"])
+	}
+
+	if form.HiddenFields["session_id"] != "abc456" {
+		t.Errorf("Expected session_id 'abc456', got %q", form.HiddenFields["session_id"])
+	}
+
+	if len(form.HiddenFields) != 2 {
+		t.Errorf("Expected 2 hidden fields, got %d", len(form.HiddenFields))
+	}
+}
