@@ -21,6 +21,9 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Download CERN CA certificates
+      run: make download-certs
+
     - name: Run Unit Tests
       run: make test
 
@@ -39,6 +42,9 @@ jobs:
       with:
         go-version: '1.25'
         cache: true
+
+    - name: Download CERN CA certificates
+      run: make download-certs
 
     - name: Install Kerberos tools
       run: |
@@ -120,6 +126,9 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Download CERN CA certificates
+      run: make download-certs
+
     - name: Run Integration Tests
       if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
       env:
@@ -137,6 +146,7 @@ jobs:
         go-version: '1.25'
         cache: true
     - run: go mod download
+    - run: make download-certs
     - run: make test
     - run: make build
 
@@ -154,10 +164,14 @@ jobs:
         go-version: '1.25'
         cache: true
 
+    - name: Download CERN CA certificates
+      run: make download-certs
+
     - name: Configure Kerberos
       run: |
         sudo tee /etc/krb5.conf << 'EOF'
         [libdefaults]
+
             default_realm = CERN.CH
             dns_lookup_realm = false
             dns_lookup_kdc = true

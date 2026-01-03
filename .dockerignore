@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# GitHub
+.github/
+
+# Build artifacts
+dist/
+cern-sso-cli
+
+# Test artifacts
+cookies.txt
+*_test.go
+integration_test.go
+
+# Documentation (not needed in image)
+README.md
+LICENSE
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.envrc
+
+# OS
+.DS_Store
+
+# Gemini artifacts
+.gemini/

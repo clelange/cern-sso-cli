@@ -24,6 +24,7 @@ go install github.com/clelange/cern-sso-cli@latest
 ```bash
 git clone https://github.com/clelange/cern-sso-cli.git
 cd cern-sso-cli
+make download-certs  # Downloads CERN CA certificates
 make build
 ```
 
@@ -36,6 +37,37 @@ make build-all
 ```
 
 Binaries will be placed in the `dist/` directory.
+
+### Container Image
+
+Multi-architecture container images (amd64/arm64) are available from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/clelange/cern-sso-cli:latest
+```
+
+Run with a Kerberos credential cache:
+
+```bash
+# Linux (file-based cache) - mount your ticket to /tmp/krb5cc
+docker run --rm \
+  -v /tmp/krb5cc_$(id -u):/tmp/krb5cc \
+  -v $(pwd):/output \
+  ghcr.io/clelange/cern-sso-cli cookie --url https://gitlab.cern.ch --file /output/cookies.txt
+
+# With password authentication
+docker run --rm \
+  -e KRB_USERNAME=your-username \
+  -e KRB_PASSWORD=your-password \
+  -v $(pwd):/output \
+  ghcr.io/clelange/cern-sso-cli cookie --url https://gitlab.cern.ch --file /output/cookies.txt
+```
+
+Build locally:
+
+```bash
+make docker-build
+```
 
 ## Usage
 
