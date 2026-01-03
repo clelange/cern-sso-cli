@@ -141,7 +141,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 				os.Setenv("KRB5CCNAME", filePath)
 				cl, err = NewClientFromCCache(cfg)
 				if err == nil {
-					return newKerberosClientFromKrbClient(cl, version, verifyCert)
+					return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, cacheInfo.Principal)
 				}
 			}
 		}
@@ -156,7 +156,7 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 			}
 			cl = client.NewWithPassword(username, "CERN.CH", password, cfg, client.DisablePAFXFAST(true))
 			if loginErr := cl.Login(); loginErr == nil {
-				return newKerberosClientFromKrbClient(cl, version, verifyCert)
+				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, krbUsername)
 			} else {
 				return nil, fmt.Errorf("kerberos login failed for %s: %w", krbUsername, loginErr)
 			}
@@ -190,7 +190,8 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 	cl, err = NewClientFromCCache(cfg)
 	if err == nil {
 		// Successfully loaded from ccache
-		return newKerberosClientFromKrbClient(cl, version, verifyCert)
+		username := extractUsernameFromClient(cl)
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, username)
 	}
 
 	// On macOS, try to convert API cache to file cache
@@ -199,7 +200,8 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 			os.Setenv("KRB5CCNAME", filePath)
 			cl, err = NewClientFromCCache(cfg)
 			if err == nil {
-				return newKerberosClientFromKrbClient(cl, version, verifyCert)
+				username := extractUsernameFromClient(cl)
+				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, username)
 			}
 		}
 	}
@@ -224,7 +226,29 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 		return nil, fmt.Errorf("kerberos login failed: %w", err)
 	}
 
-	return newKerberosClientFromKrbClient(cl, version, verifyCert)
+	// Normalize username for storage
+	if !strings.Contains(username, "@") {
+		username = username + "@CERN.CH"
+	}
+	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
+		parts := strings.Split(username, "@")
+		username = parts[0] + "@CERN.CH"
+	}
+	return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, username)
+}
+
+// extractUsernameFromClient extracts the principal name from the Kerberos client.
+// Returns empty string if the principal cannot be determined.
+func extractUsernameFromClient(cl *client.Client) string {
+	if cl == nil || cl.Credentials == nil {
+		return ""
+	}
+	cname := cl.Credentials.CName()
+	realm := cl.Credentials.Realm()
+	if cname.PrincipalNameString() != "" && realm != "" {
+		return cname.PrincipalNameString() + "@" + realm
+	}
+	return ""
 }
 
 // newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
@@ -353,6 +377,7 @@ func (k *KerberosClient) DoSPNEGORequest(req *http.Request) (*http.Response, err
 type LoginResult struct {
 	Cookies     []*http.Cookie
 	RedirectURI string
+	Username    string // The principal that was used for authentication
 }
 
 // TryLoginWithCookies attempts to authenticate using existing auth.cern.ch cookies.
@@ -452,6 +477,7 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 			return &LoginResult{
 				Cookies:     k.GetCookies(resp.Request.URL),
 				RedirectURI: redirectURI,
+				Username:    k.username,
 			}, nil
 		}
 
@@ -784,6 +810,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			return &LoginResult{
 				Cookies:     k.GetCookies(authResp.Request.URL),
 				RedirectURI: authResp.Request.URL.String(),
+				Username:    k.username,
 			}, nil
 		}
 
@@ -810,6 +837,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	return &LoginResult{
 		Cookies:     k.GetCookies(authResp.Request.URL),
 		RedirectURI: redirectURI,
+		Username:    k.username,
 	}, nil
 }
 
