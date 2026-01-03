@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"time"
 
@@ -37,7 +37,7 @@ func init() {
 func runStatus(cmd *cobra.Command, args []string) error {
 	cookies, err := cookie.Load(statusFile)
 	if err != nil {
-		log.Fatalf("Failed to load cookies from %s: %v", statusFile, err)
+		return fmt.Errorf("failed to load cookies from %s: %w", statusFile, err)
 	}
 
 	if quiet {
