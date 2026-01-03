@@ -858,7 +858,7 @@ func promptForOTP(username string) (string, error) {
 	var code string
 	_, err := fmt.Scanln(&code)
 	if err != nil {
-		return "", fmt.Errorf("failed to read input: %v", err)
+		return "", fmt.Errorf("failed to read input: %w", err)
 	}
 	code = strings.TrimSpace(code)
 	if len(code) != 6 {
