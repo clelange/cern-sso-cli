@@ -5,7 +5,7 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 ## Features
 
 - Save SSO session cookies for use with curl, wget, etc.
-- Check cookie validity and expiration status
+- Check cookie expiration status (with optional HTTP verification)
 - Get OIDC access tokens via Authorization Code flow
 - Device Authorization Grant flow for headless environments
 - Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
@@ -199,13 +199,21 @@ For environments without Kerberos, use Device Authorization Grant:
 
 ### Check Cookie Status
 
-Display the validity and expiration information of stored cookies:
+Display the expiration information of stored cookies:
 
 ```bash
 ./cern-sso-cli status [--file cookies.txt] [--json]
 ```
 
-In quiet mode (`--quiet`), exits with code 0 if any valid cookies exist, 1 otherwise.
+**Important**: By default, `status` only checks cookie expiration times stored in the file **without making network requests**. This is fast but doesn't verify if cookies actually work.
+
+To verify cookies by making an actual HTTP request to a target URL:
+
+```bash
+./cern-sso-cli status --url https://gitlab.cern.ch [--file cookies.txt]
+```
+
+In quiet mode (`--quiet`), exits with code 0 if cookies are valid (and verified if `--url` is provided), 1 otherwise.
 
 Shows:
 
@@ -214,11 +222,14 @@ Shows:
 - Status: ✓ Valid, ✗ Expired, or Session
 - Remaining time for valid cookies
 - Security flags: [S] for Secure, [H] for HttpOnly
+- Verification status (when `--url` is used)
 
 Use `--json` flag for machine-readable output:
 
 ```bash
 ./cern-sso-cli status --json
+# With verification:
+./cern-sso-cli status --url https://gitlab.cern.ch --json
 ```
 
 ### Global Options
@@ -264,6 +275,9 @@ Use `--json` flag for machine-readable output:
 | ---- | ------- | ----------- |
 | `--file` | `cookies.txt` | Cookie file to check |
 | `--json` | `false` | Output as JSON instead of table format |
+| `--url` | (none) | URL to verify cookies against (makes HTTP request) |
+| `--insecure` or `-k` | `false` | Skip certificate validation when verifying |
+| `--auth-host` | `auth.cern.ch` | Authentication hostname for verification |
 
 ### Shell Completion
 

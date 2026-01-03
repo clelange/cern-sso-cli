@@ -27,16 +27,17 @@ func truncateString(s string, maxLen int) string {
 
 // PrintStatus displays cookie information in either table or JSON format.
 // If asJSON is true, output is in JSON format. Otherwise, a formatted table is shown.
-func PrintStatus(cookies []*http.Cookie, asJSON bool, w io.Writer) {
+// If verified is true, shows verification status instead of time-based expiry.
+func PrintStatus(cookies []*http.Cookie, asJSON bool, verified bool, verifiedValid bool, w io.Writer) {
 	if asJSON {
-		printStatusJSON(cookies, w)
+		printStatusJSON(cookies, verified, verifiedValid, w)
 	} else {
-		printStatusTable(cookies, w)
+		printStatusTable(cookies, verified, verifiedValid, w)
 	}
 }
 
 // printStatusTable displays cookies in a formatted table.
-func printStatusTable(cookies []*http.Cookie, w io.Writer) {
+func printStatusTable(cookies []*http.Cookie, verified bool, verifiedValid bool, w io.Writer) {
 	if len(cookies) == 0 {
 		fmt.Fprintln(w, "No cookies found.")
 		return
@@ -55,6 +56,15 @@ func printStatusTable(cookies []*http.Cookie, w io.Writer) {
 	})
 
 	fmt.Fprintln(w, "Cookie Status:")
+	if verified {
+		if verifiedValid {
+			fmt.Fprintln(w, "Verification: ✓ Cookies verified by HTTP request")
+		} else {
+			fmt.Fprintln(w, "Verification: ✗ Cookies failed HTTP verification")
+		}
+	} else {
+		fmt.Fprintln(w, "Note: Only checking expiry times (use --url to verify with HTTP request)")
+	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n", "Name", "Domain", "Path", "Expires", "Status")
 	fmt.Fprintln(w, strings.Repeat("-", 104))
@@ -115,10 +125,12 @@ type CookieStatusJSON struct {
 	Expires          *string `json:"expires"`
 	Status           string  `json:"status"`
 	RemainingSeconds float64 `json:"remaining_seconds"`
+	Verified         bool    `json:"verified"`
+	VerifiedValid    bool    `json:"verified_valid,omitempty"`
 }
 
 // printStatusJSON displays cookies in JSON format.
-func printStatusJSON(cookies []*http.Cookie, w io.Writer) {
+func printStatusJSON(cookies []*http.Cookie, verified bool, verifiedValid bool, w io.Writer) {
 	now := time.Now()
 	result := make([]CookieStatusJSON, len(cookies))
 
@@ -152,6 +164,8 @@ func printStatusJSON(cookies []*http.Cookie, w io.Writer) {
 			Expires:          expires,
 			Status:           status,
 			RemainingSeconds: remainingSeconds,
+			Verified:         verified,
+			VerifiedValid:    verifiedValid,
 		}
 	}
 
