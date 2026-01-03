@@ -10,6 +10,7 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 - Device Authorization Grant flow for headless environments
 - Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
 - Support for skipping certificate validation via `--insecure`
+- 2FA/OTP support for CERN primary accounts (software tokens only)
 
 ## Installation
 
@@ -32,6 +33,7 @@ To build binaries for macOS and Linux (amd64 and arm64):
 ```bash
 make build-all
 ```
+
 Binaries will be placed in the `dist/` directory.
 
 ## Usage
@@ -103,12 +105,34 @@ On macOS, you may have multiple Kerberos tickets from different accounts (visibl
 If no matching cache is found but `KRB_PASSWORD` is set, the tool will authenticate using the specified username with that password.
 
 If the specified user is not found, the error message lists available CERN.CH caches:
-```
+
+```shell
 Error: no Kerberos cache found for user 'baduser@CERN.CH'
 Available CERN.CH caches:
   alice@CERN.CH (expires Jan 3 22:26:00)
   bob@CERN.CH (expires Jan 3 22:26:01)
 ```
+
+#### 2FA/OTP Support
+
+If your CERN account has 2FA enabled (recommended for primary accounts), the tool will automatically prompt for a 6-digit OTP code during authentication:
+
+```bash
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+The tool will display:
+
+```shell
+Logging in with Kerberos...
+Enter your 6-digit OTP code for alice@CERN.CH: 123456
+```
+
+**Important Notes:**
+
+- Only software token-based 2FA is supported
+- Hardware dongles (e.g., YubiKey) are **not currently supported**
+- The OTP code is entered interactively and is not stored anywhere
 
 ### Save SSO Cookies
 
@@ -151,6 +175,7 @@ Display the validity and expiration information of stored cookies:
 In quiet mode (`--quiet`), exits with code 0 if any valid cookies exist, 1 otherwise.
 
 Shows:
+
 - Cookie name, domain, and path
 - Expiration date/time
 - Status: ✓ Valid, ✗ Expired, or Session
@@ -158,6 +183,7 @@ Shows:
 - Security flags: [S] for Secure, [H] for HttpOnly
 
 Use `--json` flag for machine-readable output:
+
 ```bash
 ./cern-sso-cli status --json
 ```
@@ -165,7 +191,7 @@ Use `--json` flag for machine-readable output:
 ### Global Options
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ---- | ------- | ----------- |
 | `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
 | `--user` or `-u` | (none) | Use specific CERN.CH Kerberos principal (e.g., `clange` or `clange@CERN.CH`). See [Multiple Kerberos Credentials](#multiple-kerberos-credentials). |
 | `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
@@ -173,7 +199,7 @@ Use `--json` flag for machine-readable output:
 ### Cookie Command
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ---- | ------- | ----------- |
 | `--url` | (required) | Target URL to authenticate against |
 | `--file` | `cookies.txt` | Output cookie file |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
@@ -183,7 +209,7 @@ Use `--json` flag for machine-readable output:
 ### Token Command
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ---- | ------- | ----------- |
 | `--url` | (required) | OAuth redirect URI |
 | `--client-id` | (required) | OAuth client ID |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
@@ -193,7 +219,7 @@ Use `--json` flag for machine-readable output:
 ### Device Command
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ---- | ------- | ----------- |
 | `--client-id` | (required) | OAuth client ID |
 | `--auth-host` | `auth.cern.ch` | Keycloak hostname |
 | `--realm` | `cern` | Keycloak realm |
@@ -202,7 +228,7 @@ Use `--json` flag for machine-readable output:
 ### Status Command
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ---- | ------- | ----------- |
 | `--file` | `cookies.txt` | Cookie file to check |
 | `--json` | `false` | Output as JSON instead of table format |
 
@@ -215,7 +241,7 @@ Use `--json` flag for machine-readable output:
 ## Environment Variables
 
 | Variable | Description |
-|----------|-------------|
+| -------- | ----------- |
 | `KRB_USERNAME` | Kerberos username (fallback if no credential cache) |
 | `KRB_PASSWORD` | Kerberos password |
 | `KRB5CCNAME` | Path to Kerberos credential cache |
@@ -226,7 +252,7 @@ Use `--json` flag for machine-readable output:
 This tool is a Go port of the [auth-get-sso-cookie](https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie) Python package. Key differences:
 
 | Feature | Python | Go |
-|---------|--------|-----|
+| ------- | ------ | -- |
 | Dependencies | requests, beautifulsoup4, requests-gssapi | None (single binary) |
 | Kerberos | System GSS-API | Built-in (gokrb5) |
 | Insecure | Supported (`verify=verify_cert`) | Supported (`--insecure`) |
@@ -243,5 +269,6 @@ make test-integration
 ```
 
 The integration tests verify cookie generation and authentication against:
+
 - account.web.cern.ch
 - gitlab.cern.ch
