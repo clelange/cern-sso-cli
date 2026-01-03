@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.48.0
 )
 
@@ -17,7 +18,6 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 )

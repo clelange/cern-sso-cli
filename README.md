@@ -9,8 +9,9 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 - Get OIDC access tokens via Authorization Code flow
 - Device Authorization Grant flow for headless environments
 - Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
-- Support for skipping certificate validation via `--insecure`
+- Support for skipping certificate validation via `--insecure` or `-k`
 - 2FA/OTP support for CERN primary accounts (software tokens only)
+- Shell completion for bash, zsh, fish, and PowerShell
 
 ## Installation
 
@@ -231,6 +232,43 @@ Use `--json` flag for machine-readable output:
 | ---- | ------- | ----------- |
 | `--file` | `cookies.txt` | Cookie file to check |
 | `--json` | `false` | Output as JSON instead of table format |
+
+### Shell Completion
+
+Generate shell completion scripts for tab completion:
+
+```bash
+cern-sso-cli completion [bash|zsh|fish|powershell]
+```
+
+**Bash:**
+
+```bash
+# Add to current session
+source <(cern-sso-cli completion bash)
+
+# Install permanently (Linux)
+cern-sso-cli completion bash > /etc/bash_completion.d/cern-sso-cli
+
+# Install permanently (macOS with Homebrew)
+cern-sso-cli completion bash > $(brew --prefix)/etc/bash_completion.d/cern-sso-cli
+```
+
+**Zsh:**
+
+```bash
+# Enable completion if not already
+echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+# Install
+cern-sso-cli completion zsh > "${fpath[1]}/_cern-sso-cli"
+```
+
+**Fish:**
+
+```bash
+cern-sso-cli completion fish > ~/.config/fish/completions/cern-sso-cli.fish
+```
 
 ## Requirements
 
