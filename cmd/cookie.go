@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -57,8 +57,8 @@ func runCookie(cmd *cobra.Command, args []string) error {
 		if existingUser != "" {
 			requestedUser := normalizeUsername(krbUser)
 			if existingUser != requestedUser {
-				log.Fatalf("Cookie file %s was created by user %s, but you requested user %s.\n"+
-					"Use --force to overwrite with the new user's cookies.", cookieFile, existingUser, requestedUser)
+				return fmt.Errorf("cookie file %s was created by user %s, but you requested user %s\n"+
+					"Use --force to overwrite with the new user's cookies", cookieFile, existingUser, requestedUser)
 			}
 		}
 	}
@@ -179,14 +179,14 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 	logPrintln("Initializing Kerberos client...")
 	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
 	if err != nil {
-		log.Fatalf("Failed to initialize Kerberos: %v", err)
+		return fmt.Errorf("failed to initialize Kerberos: %w", err)
 	}
 	defer kerbClient.Close()
 
 	logPrintln("Logging in with Kerberos...")
 	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)
 	if err != nil {
-		log.Fatalf("Login failed: %v", err)
+		return fmt.Errorf("login failed: %w", err)
 	}
 
 	saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result, insecure)
