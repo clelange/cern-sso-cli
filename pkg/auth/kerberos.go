@@ -104,6 +104,7 @@ type KerberosClient struct {
 	jar              http.CookieJar
 	collectedCookies []*http.Cookie // Stores full cookie attributes from Set-Cookie headers
 	version          string         // Version string for User-Agent header
+	username         string         // Username for display in prompts
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -228,6 +229,11 @@ func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsern
 
 // newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
 func newKerberosClientFromKrbClient(cl *client.Client, version string, verifyCert bool) (*KerberosClient, error) {
+	return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, "")
+}
+
+// newKerberosClientFromKrbClientWithUser creates a KerberosClient from an existing gokrb5 client with a username.
+func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, verifyCert bool, username string) (*KerberosClient, error) {
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
@@ -238,6 +244,7 @@ func newKerberosClientFromKrbClient(cl *client.Client, version string, verifyCer
 		jar:              jar,
 		collectedCookies: make([]*http.Cookie, 0),
 		version:          version,
+		username:         username,
 	}
 
 	// Create a custom transport that intercepts cookies from responses
@@ -688,7 +695,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				return nil, &LoginError{Message: fmt.Sprintf("failed to parse OTP form: %v", err)}
 			}
 
-			otpCode, err := promptForOTP()
+			otpCode, err := promptForOTP(k.username)
 			if err != nil {
 				return nil, &LoginError{Message: fmt.Sprintf("failed to read OTP: %v", err)}
 			}
@@ -807,8 +814,12 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 }
 
 // promptForOTP prompts the user for a 6-digit OTP code.
-func promptForOTP() (string, error) {
-	fmt.Print("Enter your 6-digit OTP code: ")
+func promptForOTP(username string) (string, error) {
+	if username != "" {
+		fmt.Printf("Enter your 6-digit OTP code for %s: ", username)
+	} else {
+		fmt.Print("Enter your 6-digit OTP code: ")
+	}
 	var code string
 	_, err := fmt.Scanln(&code)
 	if err != nil {
