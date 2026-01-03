@@ -1,6 +1,7 @@
 package cookie
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,46 +105,57 @@ func printStatusTable(cookies []*http.Cookie, w io.Writer) {
 	}
 }
 
+// CookieStatusJSON represents cookie data for JSON output.
+type CookieStatusJSON struct {
+	Name             string  `json:"name"`
+	Domain           string  `json:"domain"`
+	Path             string  `json:"path"`
+	Secure           bool    `json:"secure"`
+	HttpOnly         bool    `json:"http_only"`
+	Expires          *string `json:"expires"`
+	Status           string  `json:"status"`
+	RemainingSeconds float64 `json:"remaining_seconds"`
+}
+
 // printStatusJSON displays cookies in JSON format.
 func printStatusJSON(cookies []*http.Cookie, w io.Writer) {
-	fmt.Fprintln(w, "[")
 	now := time.Now()
+	result := make([]CookieStatusJSON, len(cookies))
+
 	for i, c := range cookies {
 		var status string
 		var remainingSeconds float64
+		var expires *string
 
 		if c.Expires.IsZero() || c.Expires.Unix() <= 0 {
 			status = "session"
 			remainingSeconds = 0
+			expires = nil
 		} else if c.Expires.Before(now) {
 			status = "expired"
 			remainingSeconds = 0
+			expiresStr := c.Expires.Format(time.RFC3339)
+			expires = &expiresStr
 		} else {
 			status = "valid"
 			remainingSeconds = c.Expires.Sub(now).Seconds()
+			expiresStr := c.Expires.Format(time.RFC3339)
+			expires = &expiresStr
 		}
 
-		fmt.Fprintf(w, "  {\n")
-		fmt.Fprintf(w, "    \"name\": %q,\n", c.Name)
-		fmt.Fprintf(w, "    \"domain\": %q,\n", c.Domain)
-		fmt.Fprintf(w, "    \"path\": %q,\n", c.Path)
-		fmt.Fprintf(w, "    \"secure\": %v,\n", c.Secure)
-		fmt.Fprintf(w, "    \"http_only\": %v,\n", c.HttpOnly)
-
-		if c.Expires.IsZero() || c.Expires.Unix() <= 0 {
-			fmt.Fprintf(w, "    \"expires\": null,\n")
-		} else {
-			fmt.Fprintf(w, "    \"expires\": %q,\n", c.Expires.Format(time.RFC3339))
+		result[i] = CookieStatusJSON{
+			Name:             c.Name,
+			Domain:           c.Domain,
+			Path:             c.Path,
+			Secure:           c.Secure,
+			HttpOnly:         c.HttpOnly,
+			Expires:          expires,
+			Status:           status,
+			RemainingSeconds: remainingSeconds,
 		}
-
-		fmt.Fprintf(w, "    \"status\": %q,\n", status)
-		fmt.Fprintf(w, "    \"remaining_seconds\": %.0f\n", remainingSeconds)
-		fmt.Fprintf(w, "  }")
-
-		if i < len(cookies)-1 {
-			fmt.Fprintf(w, ",")
-		}
-		fmt.Fprintln(w, "")
 	}
-	fmt.Fprintln(w, "]")
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(result)
 }

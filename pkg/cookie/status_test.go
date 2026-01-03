@@ -420,7 +420,7 @@ func TestPrintStatusJSON_EmptyCookies(t *testing.T) {
 
 	output := buf.String()
 
-	if output != "[\n]\n" {
-		t.Errorf("Expected empty JSON array with newlines, got: %q", output)
+	if output != "[]\n" {
+		t.Errorf("Expected empty JSON array, got: %q", output)
 	}
 }
