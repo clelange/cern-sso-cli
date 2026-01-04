@@ -367,6 +367,117 @@ func (k *KerberosClient) SetPreferredMethod(method string) {
 	k.preferredMethod = method
 }
 
+// switchTo2FAMethod switches from the current 2FA method to the preferred one.
+// It submits the "Try Another Way" form, parses the method selection page,
+// and selects the preferred method.
+func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBody []byte, preferredMethod string) ([]byte, *http.Response, error) {
+	// Parse the "Try Another Way" form
+	tryAnotherWayForm, err := ParseTryAnotherWayForm(bytes.NewReader(currentBody))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse Try Another Way form: %w", err)
+	}
+
+	// Make the action URL absolute
+	actionURL := tryAnotherWayForm.Action
+	if !strings.HasPrefix(actionURL, "http") {
+		baseURL := currentResp.Request.URL
+		resolvedURL, err := baseURL.Parse(actionURL)
+		if err == nil {
+			actionURL = resolvedURL.String()
+		}
+	}
+
+	// Submit the "Try Another Way" form
+	formData := url.Values{}
+	formData.Set("tryAnotherWay", "on")
+
+	selectionResp, err := k.httpClient.PostForm(actionURL, formData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to submit Try Another Way form: %w", err)
+	}
+	defer selectionResp.Body.Close()
+
+	// Follow any redirects
+	for selectionResp.StatusCode == http.StatusFound || selectionResp.StatusCode == http.StatusSeeOther {
+		location := selectionResp.Header.Get("Location")
+		if location == "" {
+			break
+		}
+		locURL, err := url.Parse(location)
+		if err == nil && !locURL.IsAbs() {
+			locURL = selectionResp.Request.URL.ResolveReference(locURL)
+			location = locURL.String()
+		}
+		selectionResp, err = k.httpClient.Get(location)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
+		}
+		defer selectionResp.Body.Close()
+	}
+
+	selectionBody, err := io.ReadAll(selectionResp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read selection page: %w", err)
+	}
+
+	// Parse the method selection page
+	selectionPage, err := ParseMethodSelectionPage(bytes.NewReader(selectionBody))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse method selection page: %w", err)
+	}
+
+	// Find the preferred method
+	method := selectionPage.FindMethod(preferredMethod)
+	if method == nil {
+		return nil, nil, fmt.Errorf("preferred method %q not available", preferredMethod)
+	}
+
+	// Make the selection form action URL absolute
+	selectionActionURL := selectionPage.Action
+	if !strings.HasPrefix(selectionActionURL, "http") {
+		baseURL := selectionResp.Request.URL
+		resolvedURL, err := baseURL.Parse(selectionActionURL)
+		if err == nil {
+			selectionActionURL = resolvedURL.String()
+		}
+	}
+
+	// Submit the method selection
+	selectionFormData := url.Values{}
+	selectionFormData.Set("authenticationExecution", method.ExecutionID)
+
+	methodResp, err := k.httpClient.PostForm(selectionActionURL, selectionFormData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to submit method selection: %w", err)
+	}
+	defer methodResp.Body.Close()
+
+	// Follow any redirects
+	for methodResp.StatusCode == http.StatusFound || methodResp.StatusCode == http.StatusSeeOther {
+		location := methodResp.Header.Get("Location")
+		if location == "" {
+			break
+		}
+		locURL, err := url.Parse(location)
+		if err == nil && !locURL.IsAbs() {
+			locURL = methodResp.Request.URL.ResolveReference(locURL)
+			location = locURL.String()
+		}
+		methodResp, err = k.httpClient.Get(location)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
+		}
+		defer methodResp.Body.Close()
+	}
+
+	methodBody, err := io.ReadAll(methodResp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read method page: %w", err)
+	}
+
+	return methodBody, methodResp, nil
+}
+
 // getOTP retrieves an OTP code using the configured provider or interactive prompt.
 func (k *KerberosClient) getOTP() (string, string, error) {
 	if k.otpProvider != nil {
@@ -795,6 +906,22 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		authBodyStr := string(authBody)
 
 		if Check2FARequired(authBodyStr) {
+			// Check if we need to switch to a different 2FA method
+			currentMethod := GetCurrentMethod(authBodyStr)
+			if k.preferredMethod != "" && currentMethod != "" && currentMethod != k.preferredMethod {
+				// User wants a different method than what's shown
+				if HasTryAnotherWay(authBodyStr) {
+					// Switch to the preferred method
+					switchedBody, switchedResp, err := k.switchTo2FAMethod(authResp, authBody, k.preferredMethod)
+					if err != nil {
+						return nil, &LoginError{Message: fmt.Sprintf("failed to switch 2FA method: %v", err)}
+					}
+					authBody = switchedBody
+					authBodyStr = string(authBody)
+					authResp = switchedResp
+				}
+			}
+
 			// Determine which 2FA method to use
 			webauthnAvailable := IsWebAuthnRequired(authBodyStr) && k.webauthnProvider != nil && IsWebAuthnAvailable()
 			otpAvailable := IsOTPRequired(authBodyStr)
