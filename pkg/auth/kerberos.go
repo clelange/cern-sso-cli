@@ -463,17 +463,15 @@ type LoginResult struct {
 // This is useful for reusing existing SSO session cookies instead of performing
 // full Kerberos authentication for each new CERN subdomain.
 //
-// Returns success if cookies are valid (no redirect to auth hostname).
-// Returns error if cookies are invalid/missing (caller should fallback to Kerberos).
-//
 // Example flow:
-// 1. User authenticates to account.web.cern.ch with Kerberos
-// 2. auth.cern.ch cookies are saved to cookies.txt
-// 3. Later, user wants to authenticate to gitlab.cern.ch
-// 4. TryLoginWithCookies reuses auth.cern.ch cookies
-// 5. Only falls back to Kerberos if cookies are expired/invalid
+//  1. User authenticates to account.web.cern.ch with Kerberos
+//  2. auth.cern.ch cookies are saved to cookies.txt
+//  3. Later, user wants to authenticate to gitlab.cern.ch
+//  4. TryLoginWithCookies reuses auth.cern.ch cookies
+//  5. Only falls back to Kerberos if cookies are expired/invalid
+//
 // Returns success if cookies are valid (no redirect to auth hostname).
-// Returns error if cookies are invalid/missing (caller should fallback to Kerberos).
+// Returns error if cookies are invalid/missing (caller should fall back to Kerberos).
 func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname string, cookies []*http.Cookie) (*LoginResult, error) {
 	if len(cookies) == 0 {
 		return nil, fmt.Errorf("no cookies provided")
@@ -744,13 +742,11 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			break
 		}
 	}
-	// Step 5: Perform SPNEGO authentication
+	// Step 4: Perform SPNEGO authentication
 	authResp, err := k.DoSPNEGO(kerbAuthURL)
 	if err != nil {
 		return nil, fmt.Errorf("SPNEGO authentication failed: %w", err)
 	}
-	defer authResp.Body.Close()
-
 	defer authResp.Body.Close()
 
 	// Step 6: Follow redirects within auth hostname or to login completion
