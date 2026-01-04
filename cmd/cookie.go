@@ -132,6 +132,9 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 		return false, nil, nil
 	}
 
+	// Configure OTP provider for 2FA support
+	kerbClient.SetOTPProvider(GetOTPProvider())
+
 	result, err := kerbClient.TryLoginWithCookies(targetURL, authHost, cookies)
 	if err != nil {
 		kerbClient.Close()
@@ -182,6 +185,9 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 		return fmt.Errorf("failed to initialize Kerberos: %w", err)
 	}
 	defer kerbClient.Close()
+
+	// Configure OTP provider for 2FA support
+	kerbClient.SetOTPProvider(GetOTPProvider())
 
 	logPrintln("Logging in with Kerberos...")
 	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)
