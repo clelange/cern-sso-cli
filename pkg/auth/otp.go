@@ -1,4 +1,3 @@
-// Package auth provides authentication utilities for CERN SSO.
 package auth
 
 import (
