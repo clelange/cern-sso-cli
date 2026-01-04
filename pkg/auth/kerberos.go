@@ -104,10 +104,12 @@ type KerberosClient struct {
 	krbClient        *client.Client
 	httpClient       *http.Client
 	jar              http.CookieJar
-	collectedCookies []*http.Cookie // Stores full cookie attributes from Set-Cookie headers
-	version          string         // Version string for User-Agent header
-	username         string         // Username for display in prompts
-	otpProvider      *OTPProvider   // Optional OTP provider for 2FA
+	collectedCookies []*http.Cookie    // Stores full cookie attributes from Set-Cookie headers
+	version          string            // Version string for User-Agent header
+	username         string            // Username for display in prompts
+	otpProvider      *OTPProvider      // Optional OTP provider for 2FA
+	webauthnProvider *WebAuthnProvider // Optional WebAuthn provider for FIDO2 2FA
+	preferWebAuthn   bool              // Prefer WebAuthn over OTP when both available
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -352,6 +354,16 @@ func (k *KerberosClient) Close() {
 // SetOTPProvider sets the OTP provider for 2FA authentication.
 func (k *KerberosClient) SetOTPProvider(provider *OTPProvider) {
 	k.otpProvider = provider
+}
+
+// SetWebAuthnProvider sets the WebAuthn provider for FIDO2 2FA authentication.
+func (k *KerberosClient) SetWebAuthnProvider(provider *WebAuthnProvider) {
+	k.webauthnProvider = provider
+}
+
+// SetPreferWebAuthn sets whether to prefer WebAuthn over OTP when both available.
+func (k *KerberosClient) SetPreferWebAuthn(prefer bool) {
+	k.preferWebAuthn = prefer
 }
 
 // getOTP retrieves an OTP code using the configured provider or interactive prompt.
@@ -783,6 +795,62 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		authBodyStr := string(authBody)
 
 		if Check2FARequired(authBodyStr) {
+			// Determine which 2FA method to use
+			webauthnAvailable := IsWebAuthnRequired(authBodyStr) && k.webauthnProvider != nil && IsWebAuthnAvailable()
+			otpAvailable := IsOTPRequired(authBodyStr)
+
+			// Use WebAuthn if available and preferred (or if OTP not available)
+			if webauthnAvailable && (k.preferWebAuthn || !otpAvailable) {
+				// Handle WebAuthn flow
+				webauthnForm, err := ParseWebAuthnForm(bytes.NewReader(authBody))
+				if err != nil {
+					return nil, &LoginError{Message: fmt.Sprintf("failed to parse WebAuthn form: %v", err)}
+				}
+
+				// Perform FIDO2 assertion
+				result, err := k.webauthnProvider.Authenticate(webauthnForm)
+				if err != nil {
+					// If WebAuthn failed but OTP is available, could fall back
+					// For now, just return the error
+					return nil, &LoginError{Message: fmt.Sprintf("WebAuthn authentication failed: %v", err)}
+				}
+
+				// Build form data for WebAuthn response
+				formData := url.Values{}
+				for key, val := range webauthnForm.HiddenFields {
+					formData.Set(key, val)
+				}
+				formData.Set("clientDataJSON", result.ClientDataJSON)
+				formData.Set("authenticatorData", result.AuthenticatorData)
+				formData.Set("signature", result.Signature)
+				formData.Set("credentialId", result.CredentialID)
+				if result.UserHandle != "" {
+					formData.Set("userHandle", result.UserHandle)
+				}
+
+				// Make the action URL absolute
+				actionURL := webauthnForm.Action
+				if !strings.HasPrefix(actionURL, "http") {
+					baseURL := authResp.Request.URL
+					resolvedURL, err := baseURL.Parse(actionURL)
+					if err == nil {
+						actionURL = resolvedURL.String()
+					}
+				}
+
+				authResp, err = k.httpClient.PostForm(actionURL, formData)
+				if err != nil {
+					return nil, &LoginError{Message: fmt.Sprintf("failed to submit WebAuthn response: %v", err)}
+				}
+				defer authResp.Body.Close()
+				continue
+			}
+
+			// Fall back to OTP handling
+			if !otpAvailable {
+				return nil, &LoginError{Message: "2FA required but no supported method available"}
+			}
+
 			otpForm, err := ParseOTPForm(bytes.NewReader(authBody))
 			if err != nil {
 				return nil, &LoginError{Message: fmt.Sprintf("failed to parse OTP form: %v", err)}
