@@ -3,6 +3,22 @@
 ## [0.17.0](https://github.com/clelange/cern-sso-cli/compare/v0.16.0...v0.17.0) (2026-01-04)
 
 
+### ⚠ BREAKING CHANGES
+
+* Requires libfido2 system library for default builds. Build with -tags nowebauthn to disable and avoid dependency.
+
+### Features
+
+* add WebAuthn support ([#43](https://github.com/clelange/cern-sso-cli/issues/43)) ([23f510c](https://github.com/clelange/cern-sso-cli/commit/23f510ce16d51083c293d7e4dbe91e718fe6f4d5))
+
+
+### Miscellaneous Chores
+
+* release as v0.17.0 ([855d341](https://github.com/clelange/cern-sso-cli/commit/855d341089c1139259ce9c6246cbdab1b010cb27))
+
+## [0.17.0](https://github.com/clelange/cern-sso-cli/compare/v0.16.0...v0.17.0) (2026-01-04)
+
+
 ### Features
 
 * **auth:** add WebAuthn support ([#43](https://github.com/clelange/cern-sso-cli/issues/43)) ([23f510c](https://github.com/clelange/cern-sso-cli/commit/23f510ce16d51083c293d7e4dbe91e718fe6f4d5))
