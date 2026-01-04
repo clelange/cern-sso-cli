@@ -69,8 +69,17 @@ func GetErrorMessageFromHTML(r io.Reader) (string, error) {
 
 // Check2FARequired checks if the response requires 2FA.
 func Check2FARequired(body string) bool {
-	return strings.Contains(body, `id="kc-form-webauthn"`) ||
-		strings.Contains(body, `id="kc-otp-login-form"`)
+	return IsWebAuthnRequired(body) || IsOTPRequired(body)
+}
+
+// IsWebAuthnRequired checks if the response requires WebAuthn/FIDO2 authentication.
+func IsWebAuthnRequired(body string) bool {
+	return strings.Contains(body, `id="kc-form-webauthn"`)
+}
+
+// IsOTPRequired checks if the response requires OTP authentication.
+func IsOTPRequired(body string) bool {
+	return strings.Contains(body, `id="kc-otp-login-form"`)
 }
 
 // CheckConsentRequired checks if consent is required.
@@ -239,4 +248,104 @@ func ParseOTPForm(r io.Reader) (*OTPForm, error) {
 	})
 
 	return otpForm, nil
+}
+
+// WebAuthnForm represents the structure of a Keycloak WebAuthn form.
+type WebAuthnForm struct {
+	Action        string            // Form action URL
+	Challenge     string            // Base64URL-encoded challenge
+	RPID          string            // Relying Party ID
+	CredentialIDs []string          // Allowed credential IDs (base64url encoded)
+	UserHandle    string            // User handle (base64url encoded)
+	HiddenFields  map[string]string // Other hidden input fields
+}
+
+// ParseWebAuthnForm extracts the WebAuthn form details from the CERN 2FA page.
+func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	form := doc.Find("#kc-form-webauthn")
+	if form.Length() == 0 {
+		return nil, errors.New("WebAuthn form not found")
+	}
+
+	action, exists := form.Attr("action")
+	if !exists {
+		return nil, errors.New("WebAuthn form has no action")
+	}
+
+	webauthnForm := &WebAuthnForm{
+		Action:        action,
+		HiddenFields:  make(map[string]string),
+		CredentialIDs: make([]string, 0),
+	}
+
+	// Find all hidden input fields
+	form.Find("input[type='hidden']").Each(func(i int, s *goquery.Selection) {
+		name, _ := s.Attr("name")
+		value, _ := s.Attr("value")
+		if name != "" {
+			webauthnForm.HiddenFields[name] = value
+		}
+	})
+
+	// Keycloak embeds WebAuthn data in script tags or data attributes
+	// Look for the challenge in common locations
+	doc.Find("script").Each(func(i int, s *goquery.Selection) {
+		scriptContent := s.Text()
+		// Parse challenge from Keycloak's JavaScript
+		if strings.Contains(scriptContent, "challenge") {
+			// Extract challenge value
+			if idx := strings.Index(scriptContent, `"challenge"`); idx != -1 {
+				if colonIdx := strings.Index(scriptContent[idx:], ":"); colonIdx != -1 {
+					rest := scriptContent[idx+colonIdx+1:]
+					rest = strings.TrimSpace(rest)
+					if len(rest) > 0 && rest[0] == '"' {
+						endQuote := strings.Index(rest[1:], `"`)
+						if endQuote != -1 {
+							webauthnForm.Challenge = rest[1 : endQuote+1]
+						}
+					}
+				}
+			}
+			// Extract rpId
+			if idx := strings.Index(scriptContent, `"rpId"`); idx != -1 {
+				if colonIdx := strings.Index(scriptContent[idx:], ":"); colonIdx != -1 {
+					rest := scriptContent[idx+colonIdx+1:]
+					rest = strings.TrimSpace(rest)
+					if len(rest) > 0 && rest[0] == '"' {
+						endQuote := strings.Index(rest[1:], `"`)
+						if endQuote != -1 {
+							webauthnForm.RPID = rest[1 : endQuote+1]
+						}
+					}
+				}
+			}
+		}
+	})
+
+	// Also check for data attributes on elements
+	doc.Find("[data-challenge]").Each(func(i int, s *goquery.Selection) {
+		if challenge, exists := s.Attr("data-challenge"); exists {
+			webauthnForm.Challenge = challenge
+		}
+	})
+
+	doc.Find("[data-rpid]").Each(func(i int, s *goquery.Selection) {
+		if rpid, exists := s.Attr("data-rpid"); exists {
+			webauthnForm.RPID = rpid
+		}
+	})
+
+	// Extract credential IDs from allowCredentials
+	doc.Find("[data-credential-id]").Each(func(i int, s *goquery.Selection) {
+		if credID, exists := s.Attr("data-credential-id"); exists {
+			webauthnForm.CredentialIDs = append(webauthnForm.CredentialIDs, credID)
+		}
+	})
+
+	return webauthnForm, nil
 }
