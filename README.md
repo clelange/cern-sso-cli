@@ -19,28 +19,9 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 go install github.com/clelange/cern-sso-cli@latest
 ```
 
-### Build from Source
+For development and building from source, see [DEVELOPING.md](DEVELOPING.md).
 
-```bash
-git clone https://github.com/clelange/cern-sso-cli.git
-cd cern-sso-cli
-make download-certs  # Downloads CERN CA certificates
-make build
-```
-
-### Cross-Compilation
-
-To build binaries for macOS and Linux (amd64 and arm64):
-
-```bash
-make build-all
-```
-
-Binaries will be placed in the `dist/` directory.
-
-### Container Image
-
-Multi-architecture container images (amd64/arm64) are available from GitHub Container Registry:
+Container images are available from GitHub Container Registry:
 
 ```bash
 docker pull ghcr.io/clelange/cern-sso-cli:latest
@@ -61,12 +42,6 @@ docker run --rm \
   -e KRB_PASSWORD=your-password \
   -v $(pwd):/output \
   ghcr.io/clelange/cern-sso-cli cookie --url https://gitlab.cern.ch --file /output/cookies.txt
-```
-
-Build locally:
-
-```bash
-make docker-build
 ```
 
 ## Usage
@@ -471,18 +446,3 @@ This tool is a Go port of the [auth-get-sso-cookie](https://gitlab.cern.ch/authz
 | Kerberos | System GSS-API | Built-in (gokrb5) |
 | Insecure | Supported (`verify=verify_cert`) | Supported (`--insecure`) |
 | QR Codes | Supported | Not yet |
-
-## Testing
-
-Run integration tests (requires CERN credentials and network access):
-
-```bash
-export KRB_USERNAME='your-username'
-export KRB_PASSWORD='your-password'
-make test-integration
-```
-
-The integration tests verify cookie generation and authentication against:
-
-- account.web.cern.ch
-- gitlab.cern.ch
