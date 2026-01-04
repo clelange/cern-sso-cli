@@ -266,13 +266,19 @@ func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenRespons
 
 func generateRandomState() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based value if random fails
+		return hex.EncodeToString([]byte(fmt.Sprintf("%08x", time.Now().UnixNano())))
+	}
 	return hex.EncodeToString(b)
 }
 
 func generateCodeVerifier() string {
 	b := make([]byte, 48)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based value if random fails
+		return hex.EncodeToString([]byte(fmt.Sprintf("%048x", time.Now().UnixNano())))
+	}
 	return hex.EncodeToString(b)
 }
 
