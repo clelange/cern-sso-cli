@@ -201,6 +201,24 @@ export CERN_SSO_OTP=123456
 4. `CERN_SSO_OTP_COMMAND` environment variable
 5. Interactive prompt (default)
 
+##### OTP Retry
+
+If an OTP fails (expired or typo), the tool automatically retries:
+
+- **Command sources** (`--otp-command`): Waits 3 seconds for TOTP window rollover, then re-executes the command
+- **Interactive prompt**: Re-prompts with "Invalid OTP. Try again (2/3):"
+- **Static values** (`--otp` flag): Cannot retry (fails immediately)
+
+Use `--otp-retries` to configure retry behavior:
+
+```bash
+# Custom retry count
+./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-retries 5
+
+# Disable retry (fail on first error)
+./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-retries 1
+```
+
 **Important Notes:**
 
 - Only software token-based 2FA is supported
@@ -281,6 +299,7 @@ Use `--json` flag for machine-readable output:
 | `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
 | `--otp` | (none) | 6-digit OTP code for 2FA (alternative to interactive prompt) |
 | `--otp-command` | (none) | Command to execute to get OTP (e.g., `op item get CERN --otp`) |
+| `--otp-retries` | `3` | Max OTP retry attempts (0 to disable retry) |
 
 ### Cookie Command
 

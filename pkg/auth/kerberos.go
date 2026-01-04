@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
 	"github.com/jcmturner/gokrb5/v8/client"
@@ -364,6 +365,29 @@ func (k *KerberosClient) getOTP() (string, string, error) {
 		return "", "", err
 	}
 	return otp, OTPSourcePrompt, nil
+}
+
+// getMaxOTPRetries returns the configured max OTP retry attempts.
+func (k *KerberosClient) getMaxOTPRetries() int {
+	if k.otpProvider != nil {
+		return k.otpProvider.GetMaxRetries()
+	}
+	return 3 // Default
+}
+
+// refreshOTP gets a fresh OTP for retry attempts.
+func (k *KerberosClient) refreshOTP(source string, attempt, maxRetries int) (string, error) {
+	if k.otpProvider != nil {
+		return k.otpProvider.RefreshOTP(k.username, source, attempt, maxRetries)
+	}
+	// Fallback to interactive re-prompt
+	fmt.Printf("Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
+	var code string
+	_, err := fmt.Scanln(&code)
+	if err != nil {
+		return "", fmt.Errorf("failed to read input: %w", err)
+	}
+	return validateOTP(code)
 }
 
 // GetHTTPClient returns the HTTP client for non-SPNEGO requests.
@@ -764,38 +788,66 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				return nil, &LoginError{Message: fmt.Sprintf("failed to parse OTP form: %v", err)}
 			}
 
-			otpCode, _, err := k.getOTP()
+			// Get initial OTP
+			otpCode, source, err := k.getOTP()
 			if err != nil {
 				return nil, &LoginError{Message: fmt.Sprintf("failed to read OTP: %v", err)}
 			}
 
-			formData := url.Values{}
-			for k, v := range otpForm.HiddenFields {
-				formData.Set(k, v)
-			}
-			formData.Set(otpForm.OTPField, otpCode)
-			if otpForm.SubmitName != "" {
-				formData.Set(otpForm.SubmitName, otpForm.SubmitValue)
-			}
+			maxRetries := k.getMaxOTPRetries()
 
-			otpResp, err := k.httpClient.PostForm(otpForm.Action, formData)
-			if err != nil {
-				return nil, &LoginError{Message: fmt.Sprintf("failed to submit OTP: %v", err)}
+			// OTP retry loop
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				formData := url.Values{}
+				for key, val := range otpForm.HiddenFields {
+					formData.Set(key, val)
+				}
+				formData.Set(otpForm.OTPField, otpCode)
+				if otpForm.SubmitName != "" {
+					formData.Set(otpForm.SubmitName, otpForm.SubmitValue)
+				}
+
+				otpResp, err := k.httpClient.PostForm(otpForm.Action, formData)
+				if err != nil {
+					return nil, &LoginError{Message: fmt.Sprintf("failed to submit OTP: %v", err)}
+				}
+				defer otpResp.Body.Close()
+
+				otpBody, _ := io.ReadAll(otpResp.Body)
+				otpBodyStr := string(otpBody)
+
+				// Check if OTP was accepted
+				if !Check2FARequired(otpBodyStr) {
+					// Success - check for other errors
+					if errMsg, _ := GetErrorMessageFromHTML(bytes.NewReader(otpBody)); errMsg != "" {
+						return nil, &LoginError{Message: errMsg}
+					}
+					authResp = otpResp
+					break // OTP accepted, continue with auth flow
+				}
+
+				// OTP failed - try to retry if possible
+				if attempt >= maxRetries {
+					return nil, &LoginError{Message: fmt.Sprintf("OTP verification failed after %d attempts", maxRetries)}
+				}
+
+				// Check if we can refresh the OTP
+				if !IsRefreshable(source) {
+					return nil, &LoginError{Message: "Invalid OTP code. Cannot retry with static OTP value."}
+				}
+
+				// Wait for TOTP window rollover for command-based sources
+				if source == OTPSourceCommand || (source == OTPSourceEnv && os.Getenv(EnvOTPCommand) != "") {
+					fmt.Println("OTP expired. Waiting for new code...")
+					time.Sleep(3 * time.Second)
+				}
+
+				// Get fresh OTP
+				otpCode, err = k.refreshOTP(source, attempt+1, maxRetries)
+				if err != nil {
+					return nil, &LoginError{Message: fmt.Sprintf("failed to refresh OTP: %v", err)}
+				}
 			}
-			defer otpResp.Body.Close()
-
-			otpBody, _ := io.ReadAll(otpResp.Body)
-			otpBodyStr := string(otpBody)
-
-			if Check2FARequired(otpBodyStr) {
-				return nil, &LoginError{Message: "Invalid OTP code. Please try again."}
-			}
-
-			if errMsg, _ := GetErrorMessageFromHTML(bytes.NewReader(otpBody)); errMsg != "" {
-				return nil, &LoginError{Message: errMsg}
-			}
-
-			authResp = otpResp
 			continue
 		}
 

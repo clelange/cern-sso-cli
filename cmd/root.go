@@ -22,6 +22,7 @@ var (
 	krb5Config string
 	otpCode    string
 	otpCommand string
+	otpRetries int
 )
 
 // version is set from main.go
@@ -64,6 +65,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&krb5Config, "krb5-config", "", "Kerberos config source: 'embedded' (default), 'system', or file path")
 	rootCmd.PersistentFlags().StringVar(&otpCode, "otp", "", "6-digit OTP code for 2FA (alternative to prompt)")
 	rootCmd.PersistentFlags().StringVar(&otpCommand, "otp-command", "", "Command to execute to get OTP (e.g., 'op item get CERN --otp')")
+	rootCmd.PersistentFlags().IntVar(&otpRetries, "otp-retries", 3, "Max OTP retry attempts (0 to disable retry)")
 }
 
 // logInfo prints a formatted message if not in quiet mode.
@@ -109,5 +111,6 @@ func GetOTPProvider() *auth.OTPProvider {
 	return &auth.OTPProvider{
 		OTP:        otpCode,
 		OTPCommand: otpCommand,
+		MaxRetries: otpRetries,
 	}
 }
