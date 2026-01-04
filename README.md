@@ -218,6 +218,24 @@ docker run --rm -v $(pwd):/output ghcr.io/clelange/cern-sso-cli \
   cookie --url https://gitlab.cern.ch --file /output/cookies.txt
 ```
 
+### YubiKey/WebAuthn in Docker
+
+**macOS Limitation**: Due to macOS Docker/OrbStack limitations, USB devices (including YubiKey) cannot be passed through to containers. On macOS, you must use OTP-based 2FA when running in Docker.
+
+**Linux**: USB passthrough is supported. To use YubiKey in Docker on Linux:
+
+```bash
+# Find your YubiKey device
+lsusb
+
+# Pass through the USB device
+docker run --rm --device=/dev/bus/usb/XXX/YYY -v $(pwd):/output \
+  ghcr.io/clelange/cern-sso-cli:latest-webauthn \
+  cookie --url https://gitlab.cern.ch --file /output/cookies.txt
+```
+
+Replace XXX/YYY with your YubiKey's bus/device numbers from `lsusb`.
+
 ## Shell Completion
 
 Generate completion scripts for bash, zsh, fish, or powershell.
