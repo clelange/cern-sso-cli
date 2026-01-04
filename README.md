@@ -15,6 +15,10 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 
 ## Installation
 
+**Download a pre-built binary:** [GitHub releases](https://github.com/clelange/cern-sso-cli/releases)
+
+**Or install via Go:**
+
 ```bash
 go install github.com/clelange/cern-sso-cli@latest
 ```
