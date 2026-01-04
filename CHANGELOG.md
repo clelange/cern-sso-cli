@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/clelange/cern-sso-cli/compare/v0.15.0...v0.16.0) (2026-01-04)
+
+
+### Features
+
+* **auth:** add OTP retry mechanism for expired codes and typos ([#40](https://github.com/clelange/cern-sso-cli/issues/40)) ([83ead99](https://github.com/clelange/cern-sso-cli/commit/83ead997ac0b6d798b5ad4aac0d0f07351f574e1))
+
 ## [0.15.0](https://github.com/clelange/cern-sso-cli/compare/v0.14.0...v0.15.0) (2026-01-04)
 
 
