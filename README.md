@@ -30,7 +30,15 @@ This script will:
 - Install to `/usr/local/bin`, `~/bin`, or `~/.local/bin` (based on permissions)
 - Automatically configure your PATH if needed
 
-**Option 2: Using Go**
+**Option 2: Homebrew (macOS)**
+Using Homebrew on macOS:
+
+```bash
+brew tap clelange/particle-physics
+brew install cern-sso-cli
+```
+
+**Option 3: Using Go**
 If you have Go installed on macOS or Linux:
 
 ```bash
@@ -38,7 +46,7 @@ go install github.com/clelange/cern-sso-cli@latest
 ```
 Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 
-**Option 3: Download Binary**
+**Option 4: Download Binary**
 Two binary types are available for each platform:
 - **WebAuthn-enabled binaries** (default, `*-webauthn` suffix): Support hardware keys (YubiKey), require libfido2 on your system. Available for all platforms.
 - **Portable binaries** (no suffix): Work on all systems without libfido2, WebAuthn disabled. Available for all platforms (macOS Intel/ARM64, Linux AMD64/ARM64).
