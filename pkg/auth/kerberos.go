@@ -731,12 +731,15 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				break
 			}
 			// Handle relative URLs
-			if !strings.HasPrefix(location, "http") {
-				u, _ := url.Parse(kerbAuthURL)
-				u.Path = location
-				location = u.String()
+			locURL, err := url.Parse(location)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse redirect location: %w", err)
 			}
-			kerbAuthURL = location
+			if !locURL.IsAbs() {
+				baseURL, _ := url.Parse(kerbAuthURL)
+				locURL = baseURL.ResolveReference(locURL)
+			}
+			kerbAuthURL = locURL.String()
 		} else {
 			// Not a redirect - this is the URL we want to authenticate against
 			break
@@ -749,7 +752,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	}
 	defer authResp.Body.Close()
 
-	// Step 6: Follow redirects within auth hostname or to login completion
+	// Step 5: Follow redirects within auth hostname or to login completion
 	var redirectURI string
 	for {
 		var action string
