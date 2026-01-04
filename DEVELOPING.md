@@ -14,18 +14,60 @@ This guide is for contributors who want to build, test, and develop cern-sso-cli
 git clone https://github.com/clelange/cern-sso-cli.git
 cd cern-sso-cli
 make download-certs  # Downloads CERN CA certificates
-make build
+make build           # Builds binary with WebAuthn support
 ```
 
 ## Cross-Compilation
 
-To build binaries for macOS and Linux (amd64 and arm64):
+Build portable binaries without WebAuthn for macOS and Linux (no libfido2 dependency):
 
 ```bash
 make build-all
 ```
 
-Binaries will be placed in the `dist/` directory.
+Binaries will be placed in the `dist/` directory with names like `cern-sso-cli-linux-amd64`.
+
+Build WebAuthn-enabled binaries for all platforms:
+
+```bash
+# Platform-specific builds - must be built on target platform
+make build-darwin-amd64-webauthn     # macOS Intel (requires macOS + libfido2)
+make build-darwin-arm64-webauthn     # macOS Apple Silicon (requires macOS + libfido2)
+make build-linux-amd64-webauthn      # Linux AMD64 (requires libfido2-dev)
+make build-linux-arm64-webauthn      # Linux ARM64 (requires libfido2-dev)
+```
+
+All WebAuthn variants are built in releases using dedicated runners:
+- Linux AMD64 (ubuntu-latest)
+- Linux ARM64 (ubuntu-22.04-arm)
+- macOS ARM64 (macos-latest)
+- macOS Intel (macos-15-intel)
+
+Or build all WebAuthn variants at once (note: must run on each target platform):
+
+```bash
+make build-all-webauthn
+```
+
+Binaries will be placed in the `dist/` directory with names like `cern-sso-cli-linux-amd64`.
+
+Build WebAuthn-enabled binaries (platform-specific builds):
+
+```bash
+# Must be built on target platform
+make build-darwin-amd64-webauthn     # macOS Intel (requires macOS + libfido2)
+make build-darwin-arm64-webauthn     # macOS Apple Silicon (requires macOS + libfido2)
+make build-linux-amd64-webauthn      # Linux AMD64 (requires libfido2-dev)
+make build-linux-arm64-webauthn      # Linux ARM64 (requires libfido2-dev)
+```
+
+**Note**: WebAuthn builds for Linux ARM64 and macOS Intel are available for manual builds but not included in releases due to CI limitations.
+
+Or build all WebAuthn variants at once (note: must run on each target platform):
+
+```bash
+make build-all-webauthn
+```
 
 ## Container Image
 
@@ -58,5 +100,30 @@ If you don't need WebAuthn support (to avoid the libfido2 dependency):
 ```bash
 make build-no-webauthn
 # Or directly:
-go build -tags nowebauthn -o cern-sso-cli .
+CGO_ENABLED=0 go build -tags nowebauthn -o cern-sso-cli .
 ```
+
+## Building With WebAuthn (Default)
+
+The default build includes WebAuthn support:
+
+```bash
+make build
+# Or directly:
+go build -o cern-sso-cli .
+```
+
+### Platform-Specific Builds
+
+- **macOS**: `brew install libfido2` then `go build -o cern-sso-cli .`
+- **Linux**: `sudo apt install libfido2-dev` then `CGO_ENABLED=1 go build -o cern-sso-cli .`
+
+### Build Options Summary
+
+| Build Target | WebAuthn | libfido2 | Platforms |
+| ------------ | -------- | -------- | ---------- |
+| `make build` | ✅ | Required | Current platform only |
+| `make build-no-webauthn` | ❌ | Not required | Current platform only |
+| `make build-all` | ❌ | Not required | macOS/Linux (amd64/arm64) |
+| `make build-*-webauthn` | ✅ | Required | Target platform only |
+| `make build-all-webauthn` | ✅ | Required | Target platform only |

@@ -35,6 +35,9 @@ jobs:
     - name: Verify Build
       run: make build
 
+    - name: Verify Cross-Platform Builds
+      run: make build-all
+
   # Integration tests using credential cache (kinit)
   integration-ccache:
     runs-on: ubuntu-latest
@@ -161,6 +164,7 @@ jobs:
     - run: make download-certs
     - run: make test
     - run: make build
+    - run: make build-all
 
   # Integration tests on macOS with file-based cache
   # Note: API->file cache auto-conversion requires keychain setup which isn't available in CI

@@ -6,7 +6,7 @@ IMAGE_NAME ?= cern-sso-cli
 
 LDFLAGS = -X main.version=$(VERSION)
 
-.PHONY: all build build-no-webauthn clean test-integration build-all download-certs docker-build docker-push
+.PHONY: all build build-no-webauthn clean test-integration build-all build-no-webauthn download-certs docker-build docker-push
 
 all: build
 
@@ -15,7 +15,7 @@ all: build
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
-# Build without WebAuthn support (pure Go, no CGO dependencies)
+# Build without WebAuthn support (portable, no libfido2 dependency)
 build-no-webauthn:
 	CGO_ENABLED=0 go build -tags nowebauthn -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
@@ -34,7 +34,7 @@ clean:
 download-certs:
 	./scripts/download_certs.sh
 
-# Cross-platform builds (without WebAuthn for portability)
+# Cross-platform builds without WebAuthn (portable, no libfido2 dependency)
 build-all: download-certs build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64
 
 build-darwin-amd64:
@@ -48,6 +48,23 @@ build-linux-amd64:
 
 build-linux-arm64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags nowebauthn -ldflags "$(LDFLAGS)" -o dist/$(BINARY_NAME)-linux-arm64 .
+
+# Build with WebAuthn support for all platforms
+# Platform-specific builds that can only be built on the target platform
+build-darwin-amd64-webauthn:
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY_NAME)-darwin-amd64-webauthn .
+
+build-darwin-arm64-webauthn:
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY_NAME)-darwin-arm64-webauthn .
+
+build-linux-amd64-webauthn:
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY_NAME)-linux-amd64-webauthn .
+
+build-linux-arm64-webauthn:
+	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY_NAME)-linux-arm64-webauthn .
+
+# Build all WebAuthn variants
+build-all-webauthn: download-certs build-darwin-amd64-webauthn build-darwin-arm64-webauthn build-linux-amd64-webauthn build-linux-arm64-webauthn
 
 # Docker targets (without WebAuthn by default for smaller image)
 docker-build:
