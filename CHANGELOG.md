@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.18.0](https://github.com/clelange/cern-sso-cli/compare/v0.17.1...v0.18.0) (2026-01-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* --prefer-webauthn flag has been removed
+* **cmd:** --prefer-webauthn flag has been removed
+
+### Features
+
+* **auth:** implement 2FA method switching via Try Another Way ([41b18b7](https://github.com/clelange/cern-sso-cli/commit/41b18b7cf543dffccdea16e36bbd13700f608b6e))
+* **cmd:** add --use-otp and --use-webauthn flags ([f1db5e1](https://github.com/clelange/cern-sso-cli/commit/f1db5e1b0b69fa216dfaf5dd7487896467246975))
+* **cmd:** add 2FA method preference to token command ([449114b](https://github.com/clelange/cern-sso-cli/commit/449114b9ed523ffa4398613cda9fb5cb06893550))
+* **parser:** add 2FA method selection page parsing ([3da9b3e](https://github.com/clelange/cern-sso-cli/commit/3da9b3e8f3913c0d3b85bc7e2040772ff3d1fa73))
+
+
+### Documentation
+
+* document 2FA method preference flags ([a69d8fe](https://github.com/clelange/cern-sso-cli/commit/a69d8feb5432b1e4d9411a86ee7758068cb23834))
+
+
+### Miscellaneous Chores
+
+* release 0.18.0 ([6409fa4](https://github.com/clelange/cern-sso-cli/commit/6409fa4dd42563bd8889aed0fe8c1a1d0c2eec17))
+
 ## [0.17.1](https://github.com/clelange/cern-sso-cli/compare/v0.17.0...v0.17.1) (2026-01-04)
 
 
