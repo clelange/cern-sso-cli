@@ -44,6 +44,11 @@ func init() {
 }
 
 func runCookie(cmd *cobra.Command, args []string) error {
+	// Validate mutually exclusive flags
+	if err := ValidateMethodFlags(); err != nil {
+		return err
+	}
+
 	// Extract domain from target URL for cookie matching
 	u, err := url.Parse(cookieURL)
 	if err != nil {
@@ -137,7 +142,7 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 
 	// Configure WebAuthn provider for FIDO2 2FA support
 	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferWebAuthn(PreferWebAuthn())
+	kerbClient.SetPreferredMethod(GetPreferredMethod())
 
 	result, err := kerbClient.TryLoginWithCookies(targetURL, authHost, cookies)
 	if err != nil {
@@ -195,7 +200,7 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 
 	// Configure WebAuthn provider for FIDO2 2FA support
 	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferWebAuthn(PreferWebAuthn())
+	kerbClient.SetPreferredMethod(GetPreferredMethod())
 
 	logPrintln("Logging in with Kerberos...")
 	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)
