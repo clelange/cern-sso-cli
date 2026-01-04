@@ -26,9 +26,16 @@ go install github.com/clelange/cern-sso-cli@latest
 Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 
 **Option 2: Download Binary**
-1. Download the latest release for your OS (macOS/Linux) from [GitHub Releases](https://github.com/clelange/cern-sso-cli/releases).
-2. Rename the file to `cern-sso-cli`.
-3. Make it executable and move it to your path:
+Two binary types are available for each platform:
+- **WebAuthn-enabled binaries** (default, `*-webauthn` suffix): Support hardware keys (YubiKey), require libfido2 on your system. Available for all platforms.
+- **Portable binaries** (no suffix): Work on all systems without libfido2, WebAuthn disabled. Available for all platforms (macOS Intel/ARM64, Linux AMD64/ARM64).
+
+**Note for remote systems**: Use the portable binaries when running on a remote server or headless environment, as WebAuthn hardware keys won't work without direct access to the device. Use OTP instead.
+
+1. Download the latest release for your OS from [GitHub Releases](https://github.com/clelange/cern-sso-cli/releases).
+2. Choose the binary type based on your needs (e.g., `cern-sso-cli-linux-amd64` for portable or `cern-sso-cli-linux-amd64-webauthn` for WebAuthn support)
+3. Rename the file to `cern-sso-cli`.
+4. Make it executable and move it to your path:
 
 ```bash
 chmod +x cern-sso-cli
@@ -41,11 +48,15 @@ cern-sso-cli --version
 ```
 
 ### WebAuthn Requirements (YubiKey)
-If you intend to use hardware security keys (WebAuthn), you need `libfido2` installed.
+If you intend to use hardware security keys (WebAuthn), you need to:
+1. Download a WebAuthn-enabled binary (default, `*-webauthn` suffix)
+2. Install `libfido2` on your system
 
 *   **macOS**: `brew install libfido2`
 *   **Ubuntu/Debian**: `sudo apt install libfido2-dev`
 *   **RHEL/AlmaLinux/Fedora**: `sudo dnf install libfido2-devel`
+
+**Note**: WebAuthn is disabled in portable binaries. Use portable binaries with OTP or WebAuthn-enabled binaries with hardware keys.
 
 ## Quick Start
 The most common usage is getting cookies for a website:
@@ -153,7 +164,6 @@ If your account supports WebAuthn, it may prompt you to touch your key.
 | `--otp-retries` | Max OTP retry attempts (default 3). |
 | `--use-otp` | Use OTP even if WebAuthn is default. |
 | `--use-webauthn` | Use WebAuthn even if OTP is default. |
-| `--webauthn-browser` | Use browser for WebAuthn instead of direct FIDO2. |
 | `--webauthn-device` | Path to specific FIDO2 device (auto-detect if empty). |
 | `--webauthn-pin` | PIN for FIDO2 security key (alternative to prompt). |
 | `--webauthn-timeout` | Timeout in seconds for FIDO2 device interaction (default 30). |

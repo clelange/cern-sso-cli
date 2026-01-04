@@ -6,7 +6,23 @@ on:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Build portable binaries (no WebAuthn) - can cross-compile from any platform
+          - os: ubuntu-latest
+            build_portable: true
+            build_webauthn: linux-amd64
+          # Build WebAuthn for Linux ARM64
+          - os: ubuntu-22.04-arm
+            build_webauthn: linux-arm64
+          # Build WebAuthn for macOS ARM64
+          - os: macos-latest
+            build_webauthn: darwin-arm64
+          # Build WebAuthn for macOS Intel
+          - os: macos-15-intel
+            build_webauthn: darwin-amd64
     permissions:
       contents: write
     steps:
@@ -19,13 +35,43 @@ jobs:
           cache: true
 
       - name: Install certificate tools
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y curl openssl
 
       - name: Download CERN CA certificates
         run: make download-certs
 
-      - name: Build all platforms
+      - name: Build portable binaries
+        if: matrix.build_portable == true
         run: make build-all VERSION=${{ github.event.release.tag_name }}
+
+      - name: Install libfido2 (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfido2-dev
+
+      - name: Install libfido2 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libfido2
+
+      - name: Build WebAuthn binaries (Linux)
+        if: contains(matrix.build_webauthn, 'linux-')
+        run: |
+          if [[ "${{ matrix.build_webauthn }}" == *"linux-amd64"* ]]; then
+            make build-linux-amd64-webauthn VERSION=${{ github.event.release.tag_name }}
+          fi
+          if [[ "${{ matrix.build_webauthn }}" == *"linux-arm64"* ]]; then
+            make build-linux-arm64-webauthn VERSION=${{ github.event.release.tag_name }}
+          fi
+
+      - name: Build WebAuthn binaries (macOS)
+        if: contains(matrix.build_webauthn, 'darwin-')
+        run: |
+          if [[ "${{ matrix.build_webauthn }}" == *"darwin-arm64"* ]]; then
+            make build-darwin-arm64-webauthn VERSION=${{ github.event.release.tag_name }}
+          fi
+          if [[ "${{ matrix.build_webauthn }}" == *"darwin-amd64"* ]]; then
+            make build-darwin-amd64-webauthn VERSION=${{ github.event.release.tag_name }}
+          fi
 
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
