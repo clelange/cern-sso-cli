@@ -18,6 +18,11 @@ jobs:
         go-version: '1.25'
         cache: true
 
+    - name: Install libfido2 (WebAuthn support)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libfido2-dev
+
     - name: Install dependencies
       run: go mod download
 
@@ -46,10 +51,10 @@ jobs:
     - name: Download CERN CA certificates
       run: make download-certs
 
-    - name: Install Kerberos tools
+    - name: Install Kerberos and libfido2
       run: |
         sudo apt-get update
-        sudo apt-get install -y krb5-user
+        sudo apt-get install -y krb5-user libfido2-dev
 
     - name: Configure Kerberos
       run: |
@@ -123,6 +128,11 @@ jobs:
         go-version: '1.25'
         cache: true
 
+    - name: Install libfido2 (WebAuthn support)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libfido2-dev
+
     - name: Install dependencies
       run: go mod download
 
@@ -145,6 +155,8 @@ jobs:
       with:
         go-version: '1.25'
         cache: true
+    - name: Install libfido2 (WebAuthn support)
+      run: brew install libfido2
     - run: go mod download
     - run: make download-certs
     - run: make test
@@ -166,6 +178,9 @@ jobs:
 
     - name: Download CERN CA certificates
       run: make download-certs
+
+    - name: Install libfido2 (WebAuthn support)
+      run: brew install libfido2
 
     - name: Configure Kerberos
       run: |
