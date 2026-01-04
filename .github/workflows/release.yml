@@ -73,8 +73,37 @@ jobs:
             make build-darwin-amd64-webauthn VERSION=${{ github.event.release.tag_name }}
           fi
 
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+        shell: bash
+
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  checksums:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download release assets
+        run: |
+          gh release download ${{ github.event.release.tag_name }} --dir dist --pattern "*"
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * | sort -k2 > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/checksums.txt
 
