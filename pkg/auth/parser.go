@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -261,19 +262,34 @@ type WebAuthnForm struct {
 }
 
 // ParseWebAuthnForm extracts the WebAuthn form details from the CERN 2FA page.
+// Keycloak's WebAuthn page structure:
+// - <div id="kc-form-webauthn"> is a wrapper div
+// - <form id="webauth" action="..."> is the actual form inside
+// - Challenge and rpId are in JavaScript, not form fields
 func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		return nil, err
 	}
 
-	form := doc.Find("#kc-form-webauthn")
+	// Find the WebAuthn wrapper div
+	wrapper := doc.Find("#kc-form-webauthn")
+	if wrapper.Length() == 0 {
+		return nil, errors.New("WebAuthn form wrapper not found")
+	}
+
+	// Find the actual form inside the wrapper (id="webauth")
+	form := wrapper.Find("form#webauth")
 	if form.Length() == 0 {
-		return nil, errors.New("WebAuthn form not found")
+		// Fallback: try finding any form inside the wrapper
+		form = wrapper.Find("form")
+	}
+	if form.Length() == 0 {
+		return nil, errors.New("WebAuthn form not found inside wrapper")
 	}
 
 	action, exists := form.Attr("action")
-	if !exists {
+	if !exists || action == "" {
 		return nil, errors.New("WebAuthn form has no action")
 	}
 
@@ -283,7 +299,7 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 		CredentialIDs: make([]string, 0),
 	}
 
-	// Find all hidden input fields
+	// Find all hidden input fields in the form
 	form.Find("input[type='hidden']").Each(func(i int, s *goquery.Selection) {
 		name, _ := s.Attr("name")
 		value, _ := s.Attr("value")
@@ -292,42 +308,37 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 		}
 	})
 
-	// Keycloak embeds WebAuthn data in script tags or data attributes
-	// Look for the challenge in common locations
+	// Also check for credential IDs in the authn_select form
+	doc.Find("form#authn_select input[name='authn_use_chk']").Each(func(i int, s *goquery.Selection) {
+		if credID, exists := s.Attr("value"); exists && credID != "" {
+			webauthnForm.CredentialIDs = append(webauthnForm.CredentialIDs, credID)
+		}
+	})
+
+	// Keycloak embeds WebAuthn data in script tags
+	// Look for the authenticateByWebAuthn call with input object
 	doc.Find("script").Each(func(i int, s *goquery.Selection) {
 		scriptContent := s.Text()
-		// Parse challenge from Keycloak's JavaScript
+
+		// Look for challenge in the input object: challenge : 'xxx'
 		if strings.Contains(scriptContent, "challenge") {
-			// Extract challenge value
-			if idx := strings.Index(scriptContent, `"challenge"`); idx != -1 {
-				if colonIdx := strings.Index(scriptContent[idx:], ":"); colonIdx != -1 {
-					rest := scriptContent[idx+colonIdx+1:]
-					rest = strings.TrimSpace(rest)
-					if len(rest) > 0 && rest[0] == '"' {
-						endQuote := strings.Index(rest[1:], `"`)
-						if endQuote != -1 {
-							webauthnForm.Challenge = rest[1 : endQuote+1]
-						}
-					}
-				}
+			// Pattern: challenge : 'value' or challenge: 'value'
+			challengePattern := regexp.MustCompile(`challenge\s*:\s*'([^']+)'`)
+			if matches := challengePattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
+				webauthnForm.Challenge = matches[1]
 			}
-			// Extract rpId
-			if idx := strings.Index(scriptContent, `"rpId"`); idx != -1 {
-				if colonIdx := strings.Index(scriptContent[idx:], ":"); colonIdx != -1 {
-					rest := scriptContent[idx+colonIdx+1:]
-					rest = strings.TrimSpace(rest)
-					if len(rest) > 0 && rest[0] == '"' {
-						endQuote := strings.Index(rest[1:], `"`)
-						if endQuote != -1 {
-							webauthnForm.RPID = rest[1 : endQuote+1]
-						}
-					}
-				}
+		}
+
+		// Look for rpId: rpId : 'xxx'
+		if strings.Contains(scriptContent, "rpId") {
+			rpIdPattern := regexp.MustCompile(`rpId\s*:\s*'([^']+)'`)
+			if matches := rpIdPattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
+				webauthnForm.RPID = matches[1]
 			}
 		}
 	})
 
-	// Also check for data attributes on elements
+	// Also check for data attributes on elements as fallback
 	doc.Find("[data-challenge]").Each(func(i int, s *goquery.Selection) {
 		if challenge, exists := s.Attr("data-challenge"); exists {
 			webauthnForm.Challenge = challenge
@@ -337,13 +348,6 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 	doc.Find("[data-rpid]").Each(func(i int, s *goquery.Selection) {
 		if rpid, exists := s.Attr("data-rpid"); exists {
 			webauthnForm.RPID = rpid
-		}
-	})
-
-	// Extract credential IDs from allowCredentials
-	doc.Find("[data-credential-id]").Each(func(i int, s *goquery.Selection) {
-		if credID, exists := s.Attr("data-credential-id"); exists {
-			webauthnForm.CredentialIDs = append(webauthnForm.CredentialIDs, credID)
 		}
 	})
 
