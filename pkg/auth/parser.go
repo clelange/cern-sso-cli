@@ -308,7 +308,9 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 		}
 	})
 
-	// Also check for credential IDs in the authn_select form
+	// Extract credential IDs from authn_select form's authn_use_chk field(s)
+	// Confirmed from Keycloak's webauthnAuthenticate.js - this IS the credential ID!
+	// The JS does: base64url.parse(authn_use_chk.value, {loose: true})
 	doc.Find("form#authn_select input[name='authn_use_chk']").Each(func(i int, s *goquery.Selection) {
 		if credID, exists := s.Attr("value"); exists && credID != "" {
 			webauthnForm.CredentialIDs = append(webauthnForm.CredentialIDs, credID)

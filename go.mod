@@ -4,7 +4,9 @@ go 1.25.5
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
+	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
+	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.48.0
 )
@@ -18,8 +20,8 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 )

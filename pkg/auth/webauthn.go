@@ -5,12 +5,14 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/keys-pub/go-libfido2"
 )
 
@@ -105,30 +107,15 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		return nil, fmt.Errorf("failed to open FIDO2 device: %w", err)
 	}
 	// Note: Device doesn't have a public Close method, cleanup is handled internally
+	// Build clientDataJSON (this is what the browser creates)
+	// The origin must use "https://" prefix for WebAuthn
+	origin := fmt.Sprintf("https://%s", form.RPID)
+	clientDataJSON := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s","crossOrigin":false}`,
+		form.Challenge, origin)
 
-	// Decode challenge from base64url
-	challenge, err := base64.RawURLEncoding.DecodeString(form.Challenge)
-	if err != nil {
-		// Try standard base64 as fallback
-		challenge, err = base64.StdEncoding.DecodeString(form.Challenge)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode challenge: %w", err)
-		}
-	}
-
-	// Decode credential IDs
-	credentialIDs := make([][]byte, 0, len(form.CredentialIDs))
-	for _, credIDStr := range form.CredentialIDs {
-		credID, err := base64.RawURLEncoding.DecodeString(credIDStr)
-		if err != nil {
-			// Try standard base64 as fallback
-			credID, err = base64.StdEncoding.DecodeString(credIDStr)
-			if err != nil {
-				continue // Skip invalid credential IDs
-			}
-		}
-		credentialIDs = append(credentialIDs, credID)
-	}
+	// Compute SHA-256 hash of clientDataJSON - this is what libfido2 expects
+	// The Assertion function takes clientDataHash (32 bytes), not raw challenge
+	clientDataHash := sha256.Sum256([]byte(clientDataJSON))
 
 	// Check if PIN is needed - try RetryCount which fails if PIN is set but not yet verified
 	var pin string
@@ -141,33 +128,78 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		}
 	}
 
+	// Decode credential IDs from Keycloak's authn_use_chk field (base64url encoded)
+	// This is the allowCredentials list that the browser's WebAuthn API receives
+	var credentialIDs [][]byte
+	for _, credIDStr := range form.CredentialIDs {
+		if credIDStr == "" {
+			continue
+		}
+
+		// Keycloak uses base64url encoding with {loose: true} which allows missing padding
+		credID, err := base64.RawURLEncoding.DecodeString(credIDStr)
+		if err != nil {
+			// Try with standard base64url (with padding)
+			credID, err = base64.URLEncoding.DecodeString(credIDStr)
+			if err != nil {
+				// Try standard base64 as last resort
+				credID, err = base64.StdEncoding.DecodeString(credIDStr)
+				if err != nil {
+					fmt.Printf("Warning: Could not decode credential ID: %v\n", err)
+					continue
+				}
+			}
+		}
+		credentialIDs = append(credentialIDs, credID)
+	}
+
+	if len(credentialIDs) == 0 && pin != "" {
+		creds, credErr := device.Credentials(form.RPID, pin)
+		if credErr == nil && len(creds) > 0 {
+			for _, cred := range creds {
+				credentialIDs = append(credentialIDs, cred.ID)
+			}
+		}
+	}
+
 	fmt.Println("Touch your security key...")
 
 	// Perform the assertion
+	// If no credential IDs and no PIN, try with nil - some devices support resident key discovery
 	assertion, err := device.Assertion(
 		form.RPID,
-		challenge,
-		credentialIDs,
+		clientDataHash[:], // SHA-256 hash of clientDataJSON (32 bytes)
+		credentialIDs,     // nil for resident key discovery
 		pin,
 		&libfido2.AssertionOpts{
 			UP: libfido2.True, // Require user presence
 		},
 	)
 	if err != nil {
+		// If assertion failed without credential IDs, suggest browser fallback
+		if len(credentialIDs) == 0 {
+			return nil, fmt.Errorf("FIDO2 resident key discovery failed: %w. "+
+				"Your YubiKey may not have discoverable (resident) credentials for %s. "+
+				"Try using --webauthn-browser for browser-based authentication", err, form.RPID)
+		}
 		return nil, fmt.Errorf("FIDO2 assertion failed: %w", err)
 	}
 
 	// Format result for Keycloak
-	// Note: go-libfido2 returns AuthDataCBOR, which is CBOR-encoded authenticator data
-	result := &WebAuthnResult{
-		AuthenticatorData: base64.RawURLEncoding.EncodeToString(assertion.AuthDataCBOR),
-		Signature:         base64.RawURLEncoding.EncodeToString(assertion.Sig),
+	// go-libfido2 returns AuthDataCBOR which is CBOR-encoded authenticator data
+	// Keycloak expects raw authenticator data (not CBOR-wrapped)
+	// The CBOR wrapper is just a byte string containing the raw authenticator data
+	var rawAuthData []byte
+	if err := cbor.Unmarshal(assertion.AuthDataCBOR, &rawAuthData); err != nil {
+		// If CBOR decoding fails, use raw data (some versions might differ)
+		rawAuthData = assertion.AuthDataCBOR
 	}
 
-	// Build clientDataJSON (this is what the browser would normally create)
-	clientData := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"https://%s","crossOrigin":false}`,
-		form.Challenge, form.RPID)
-	result.ClientDataJSON = base64.RawURLEncoding.EncodeToString([]byte(clientData))
+	result := &WebAuthnResult{
+		AuthenticatorData: base64.RawURLEncoding.EncodeToString(rawAuthData),
+		Signature:         base64.RawURLEncoding.EncodeToString(assertion.Sig),
+		ClientDataJSON:    base64.RawURLEncoding.EncodeToString([]byte(clientDataJSON)),
+	}
 
 	// Include credential ID if available
 	if len(assertion.CredentialID) > 0 {

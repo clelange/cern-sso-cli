@@ -254,11 +254,14 @@ export CERN_SSO_WEBAUTHN_PIN=123456
 ```
 
 **WebAuthn Options:**
+ 
+ | Flag | Default | Description |
+ |------|---------|-------------|
+ | `--webauthn-pin` | (prompt) | PIN for security key |
+ | `--webauthn-device` | (auto) | Path to specific FIDO2 device |
+ | `--webauthn-timeout` | `30s` | Timeout for device interaction |
+ | `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--webauthn-pin` | (prompt) | PIN for security key |
-| `--webauthn-device` | (auto) | Path to specific FIDO2 device |
 | `--webauthn-timeout` | `30s` | Timeout for device interaction |
 | `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
 
