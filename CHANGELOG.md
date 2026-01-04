@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.17.1](https://github.com/clelange/cern-sso-cli/compare/v0.17.0...v0.17.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* correct relative URL handling in Kerberos redirect loop ([e6a5b5f](https://github.com/clelange/cern-sso-cli/commit/e6a5b5fbf115779248278caf208bebfd6b40d36e))
+* handle rand.Read errors in OIDC state and verifier generation ([f11d705](https://github.com/clelange/cern-sso-cli/commit/f11d7055c0b08a4bfdd697ee31a9af71e8864704))
+* remove duplicate defer and correct step numbering in LoginWithKerberos ([48d87e8](https://github.com/clelange/cern-sso-cli/commit/48d87e8d77b701f603b8a40f7ea830f79559bacb))
+* replace log.Fatalf with proper error returns in token and device commands ([99facd3](https://github.com/clelange/cern-sso-cli/commit/99facd330fd26b7da361b70e8e08c664f3ef42ec))
+
 ## [0.17.0](https://github.com/clelange/cern-sso-cli/compare/v0.16.0...v0.17.0) (2026-01-04)
 
 
