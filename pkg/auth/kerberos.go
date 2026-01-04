@@ -109,7 +109,7 @@ type KerberosClient struct {
 	username         string            // Username for display in prompts
 	otpProvider      *OTPProvider      // Optional OTP provider for 2FA
 	webauthnProvider *WebAuthnProvider // Optional WebAuthn provider for FIDO2 2FA
-	preferWebAuthn   bool              // Prefer WebAuthn over OTP when both available
+	preferredMethod  string            // Preferred 2FA method: "otp", "webauthn", or "" (use default)
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -361,9 +361,10 @@ func (k *KerberosClient) SetWebAuthnProvider(provider *WebAuthnProvider) {
 	k.webauthnProvider = provider
 }
 
-// SetPreferWebAuthn sets whether to prefer WebAuthn over OTP when both available.
-func (k *KerberosClient) SetPreferWebAuthn(prefer bool) {
-	k.preferWebAuthn = prefer
+// SetPreferredMethod sets the preferred 2FA method.
+// Valid values are "otp", "webauthn", or "" (use server default).
+func (k *KerberosClient) SetPreferredMethod(method string) {
+	k.preferredMethod = method
 }
 
 // getOTP retrieves an OTP code using the configured provider or interactive prompt.
@@ -799,7 +800,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			otpAvailable := IsOTPRequired(authBodyStr)
 
 			// Use WebAuthn if available and preferred (or if OTP not available)
-			if webauthnAvailable && (k.preferWebAuthn || !otpAvailable) {
+			if webauthnAvailable && (k.preferredMethod == "webauthn" || !otpAvailable) {
 				// Handle WebAuthn flow
 				webauthnForm, err := ParseWebAuthnForm(bytes.NewReader(authBody))
 				if err != nil {
