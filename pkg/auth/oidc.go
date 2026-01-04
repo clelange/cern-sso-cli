@@ -268,7 +268,7 @@ func generateRandomState() string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		// Fallback to time-based value if random fails
-		return hex.EncodeToString([]byte(fmt.Sprintf("%08x", time.Now().UnixNano())))
+		return fmt.Sprintf("%08x", uint32(time.Now().UnixNano()))
 	}
 	return hex.EncodeToString(b)
 }
@@ -277,7 +277,9 @@ func generateCodeVerifier() string {
 	b := make([]byte, 48)
 	if _, err := rand.Read(b); err != nil {
 		// Fallback to time-based value if random fails
-		return hex.EncodeToString([]byte(fmt.Sprintf("%048x", time.Now().UnixNano())))
+		// Generate 96 hex chars from repeated time values
+		t := time.Now().UnixNano()
+		return fmt.Sprintf("%016x%016x%016x%016x%016x%016x", t, t^1, t^2, t^3, t^4, t^5)
 	}
 	return hex.EncodeToString(b)
 }

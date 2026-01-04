@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
@@ -49,7 +48,7 @@ func runDevice(cmd *cobra.Command, args []string) error {
 
 	token, err := auth.DeviceAuthorizationFlow(cfg)
 	if err != nil {
-		log.Fatalf("Device login failed: %v", err)
+		return fmt.Errorf("device login failed: %w", err)
 	}
 
 	fmt.Println("Access Token:")

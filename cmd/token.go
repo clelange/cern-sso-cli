@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
@@ -45,7 +44,7 @@ func runToken(cmd *cobra.Command, args []string) error {
 	logPrintln("Initializing Kerberos client...")
 	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !tokenInsecure)
 	if err != nil {
-		log.Fatalf("Failed to initialize Kerberos: %v", err)
+		return fmt.Errorf("failed to initialize Kerberos: %w", err)
 	}
 	defer kerbClient.Close()
 
@@ -61,7 +60,7 @@ func runToken(cmd *cobra.Command, args []string) error {
 	logPrintln("Getting access token...")
 	token, err := auth.AuthorizationCodeFlow(kerbClient, cfg)
 	if err != nil {
-		log.Fatalf("Failed to get token: %v", err)
+		return fmt.Errorf("failed to get token: %w", err)
 	}
 
 	fmt.Println(token)
