@@ -195,3 +195,212 @@ func TestParseOTPForm_WithHiddenFields(t *testing.T) {
 		t.Errorf("Expected 2 hidden fields, got %d", len(form.HiddenFields))
 	}
 }
+
+func TestHasTryAnotherWay(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		expected bool
+	}{
+		{
+			name:     "OTP page with Try Another Way",
+			html:     `<form id="kc-select-try-another-way-form" action="/switch"><input type="hidden" name="tryAnotherWay" value="on"/></form>`,
+			expected: true,
+		},
+		{
+			name:     "Page without Try Another Way",
+			html:     `<form id="kc-otp-login-form"><input name="otp" type="text" /></form>`,
+			expected: false,
+		},
+		{
+			name:     "Empty page",
+			html:     `<html><body></body></html>`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HasTryAnotherWay(tt.html)
+			if result != tt.expected {
+				t.Errorf("HasTryAnotherWay() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseTryAnotherWayForm(t *testing.T) {
+	html := `
+		<html>
+			<body>
+				<form id="kc-otp-login-form" action="/otp">
+					<input name="otp" type="text" />
+				</form>
+				<form id="kc-select-try-another-way-form" action="https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test123" method="post">
+					<input type="hidden" name="tryAnotherWay" value="on"/>
+					<a href="#" id="try-another-way">Try Another Way</a>
+				</form>
+			</body>
+		</html>`
+
+	form, err := ParseTryAnotherWayForm(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseTryAnotherWayForm failed: %v", err)
+	}
+
+	expectedAction := "https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test123"
+	if form.Action != expectedAction {
+		t.Errorf("Expected action %q, got %q", expectedAction, form.Action)
+	}
+}
+
+func TestParseTryAnotherWayForm_NotFound(t *testing.T) {
+	html := `<html><body><form id="other-form"></form></body></html>`
+
+	_, err := ParseTryAnotherWayForm(strings.NewReader(html))
+	if err == nil {
+		t.Fatal("Expected error for missing form, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Expected 'not found' in error, got %q", err.Error())
+	}
+}
+
+func TestParseMethodSelectionPage(t *testing.T) {
+	// HTML structure based on TryAnotherWay.html
+	html := `
+		<html>
+			<body>
+				<form id="kc-select-credential-form" action="https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test" method="post">
+					<div class="pf-l-stack select-auth-container">
+						<button class="pf-l-stack__item select-auth-box-parent pf-l-split" type="submit" name="authenticationExecution" value="133f73d5-6454-4197-b529-b109a5d9432c">
+							<div class="pf-l-split__item select-auth-box-icon">
+								<i class="fa fa-mobile list-view-pf-icon-lg fa-2x select-auth-box-icon-properties"></i>
+							</div>
+							<div class="pf-l-split__item pf-l-stack">
+								<div class="pf-l-stack__item select-auth-box-headline pf-c-title">
+									Authenticator Application
+								</div>
+								<div class="pf-l-stack__item select-auth-box-desc">
+									Enter a verification code from authenticator application.
+								</div>
+							</div>
+						</button>
+						<button class="pf-l-stack__item select-auth-box-parent pf-l-split" type="submit" name="authenticationExecution" value="4b3b18ac-dab0-4946-8d47-f7d8827cfedc">
+							<div class="pf-l-split__item select-auth-box-icon">
+								<i class="fa fa-key list-view-pf-icon-lg fa-2x select-auth-box-icon-properties"></i>
+							</div>
+							<div class="pf-l-split__item pf-l-stack">
+								<div class="pf-l-stack__item select-auth-box-headline pf-c-title">
+									Security Key
+								</div>
+								<div class="pf-l-stack__item select-auth-box-desc">
+									Use your Security Key to sign in.
+								</div>
+							</div>
+						</button>
+					</div>
+				</form>
+			</body>
+		</html>`
+
+	page, err := ParseMethodSelectionPage(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseMethodSelectionPage failed: %v", err)
+	}
+
+	expectedAction := "https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test"
+	if page.Action != expectedAction {
+		t.Errorf("Expected action %q, got %q", expectedAction, page.Action)
+	}
+
+	if len(page.Methods) != 2 {
+		t.Fatalf("Expected 2 methods, got %d", len(page.Methods))
+	}
+
+	// Check OTP method
+	otpMethod := page.FindMethod(MethodOTP)
+	if otpMethod == nil {
+		t.Fatal("Expected to find OTP method")
+	}
+	if otpMethod.ExecutionID != "133f73d5-6454-4197-b529-b109a5d9432c" {
+		t.Errorf("Expected OTP execution ID '133f73d5-6454-4197-b529-b109a5d9432c', got %q", otpMethod.ExecutionID)
+	}
+	if otpMethod.Label != "Authenticator Application" {
+		t.Errorf("Expected OTP label 'Authenticator Application', got %q", otpMethod.Label)
+	}
+
+	// Check WebAuthn method
+	webauthnMethod := page.FindMethod(MethodWebAuthn)
+	if webauthnMethod == nil {
+		t.Fatal("Expected to find WebAuthn method")
+	}
+	if webauthnMethod.ExecutionID != "4b3b18ac-dab0-4946-8d47-f7d8827cfedc" {
+		t.Errorf("Expected WebAuthn execution ID '4b3b18ac-dab0-4946-8d47-f7d8827cfedc', got %q", webauthnMethod.ExecutionID)
+	}
+	if webauthnMethod.Label != "Security Key" {
+		t.Errorf("Expected WebAuthn label 'Security Key', got %q", webauthnMethod.Label)
+	}
+}
+
+func TestParseMethodSelectionPage_NotFound(t *testing.T) {
+	html := `<html><body><form id="other-form"></form></body></html>`
+
+	_, err := ParseMethodSelectionPage(strings.NewReader(html))
+	if err == nil {
+		t.Fatal("Expected error for missing form, got nil")
+	}
+}
+
+func TestMethodSelectionPage_FindMethod_NotFound(t *testing.T) {
+	page := &MethodSelectionPage{
+		Action: "/test",
+		Methods: []AuthMethod{
+			{ExecutionID: "123", Type: MethodOTP, Label: "OTP"},
+		},
+	}
+
+	// OTP should be found
+	if page.FindMethod(MethodOTP) == nil {
+		t.Error("Expected to find OTP method")
+	}
+
+	// WebAuthn should not be found
+	if page.FindMethod(MethodWebAuthn) != nil {
+		t.Error("Expected WebAuthn method to be nil")
+	}
+}
+
+func TestGetCurrentMethod(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		expected string
+	}{
+		{
+			name:     "OTP page",
+			html:     `<form id="kc-otp-login-form"><input name="otp" /></form>`,
+			expected: MethodOTP,
+		},
+		{
+			name:     "WebAuthn page",
+			html:     `<div id="kc-form-webauthn"><form id="webauth"></form></div>`,
+			expected: MethodWebAuthn,
+		},
+		{
+			name:     "Neither",
+			html:     `<html><body>Regular page</body></html>`,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetCurrentMethod(tt.html)
+			if result != tt.expected {
+				t.Errorf("GetCurrentMethod() = %q, expected %q", result, tt.expected)
+			}
+		})
+	}
+}
