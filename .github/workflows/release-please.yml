@@ -23,3 +23,4 @@ jobs:
           changelog-path: CHANGELOG.md
           include-v-in-tag: true
           labels: release,automated
+          bump-minor-pre-major: true
