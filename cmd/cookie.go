@@ -86,7 +86,7 @@ func runCookie(cmd *cobra.Command, args []string) error {
 			logInfo("Found %d auth.cern.ch cookies, attempting to use them...\n", len(authCookies))
 			if ok, result, client := tryAuthCookies(cookieURL, cookieAuthHost, authCookies, cookieInsecure); ok {
 				logPrintln("Existing auth cookies worked. Skipping Kerberos authentication.")
-				saveCookiesFromAuth(client, cookieFile, cookieURL, cookieAuthHost, result, cookieInsecure)
+				saveCookiesFromAuth(client, cookieFile, cookieURL, cookieAuthHost, result)
 				return nil
 			}
 			logPrintln("Auth cookies invalid or expired, falling back to Kerberos...")
@@ -149,7 +149,7 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 }
 
 // saveCookiesFromAuth collects and saves cookies from a successful authentication.
-func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult, insecure bool) {
+func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult) {
 	logPrintln("Collecting cookies...")
 	cookies, err := client.CollectCookies(targetURL, authHost, result)
 	client.Close()
@@ -203,6 +203,6 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 		return fmt.Errorf("login failed: %w", err)
 	}
 
-	saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result, insecure)
+	saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result)
 	return nil
 }
