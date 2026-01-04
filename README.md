@@ -6,443 +6,222 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 
 - Save SSO session cookies for use with curl, wget, etc.
 - Check cookie expiration status (with optional HTTP verification)
-- Get OIDC access tokens via Authorization Code flow
-- Device Authorization Grant flow for headless environments
+- Get OIDC access tokens via Authorisation Code flow
+- Device Authorisation Grant flow for headless environments
 - Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
 - Support for skipping certificate validation via `--insecure` or `-k`
-- 2FA/OTP support for CERN primary accounts (software tokens only)
+- 2FA support for CERN primary accounts (OTP & WebAuthn/YubiKey)
 - Shell completion for bash, zsh, fish, and PowerShell
 
 ## Installation
 
-**Download a pre-built binary:** [GitHub releases](https://github.com/clelange/cern-sso-cli/releases)
+To use the tool without typing `./` or worrying about paths, install it to your system PATH.
 
-**Or install via Go:**
+**Option 1: Using Go (Recommended)**
+If you have Go installed on macOS or Linux:
 
 ```bash
 go install github.com/clelange/cern-sso-cli@latest
 ```
+Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 
-For development and building from source, see [DEVELOPING.md](DEVELOPING.md).
-
-Container images are available from GitHub Container Registry:
-
-```bash
-docker pull ghcr.io/clelange/cern-sso-cli:latest
-```
-
-Run with a Kerberos credential cache:
+**Option 2: Download Binary**
+1. Download the latest release for your OS (macOS/Linux) from [GitHub Releases](https://github.com/clelange/cern-sso-cli/releases).
+2. Rename the file to `cern-sso-cli`.
+3. Make it executable and move it to your path:
 
 ```bash
-# Linux (file-based cache) - mount your ticket to /tmp/krb5cc
-docker run --rm \
-  -v /tmp/krb5cc_$(id -u):/tmp/krb5cc \
-  -v $(pwd):/output \
-  ghcr.io/clelange/cern-sso-cli cookie --url https://gitlab.cern.ch --file /output/cookies.txt
-
-# With password authentication
-docker run --rm \
-  -e KRB_USERNAME=your-username \
-  -e KRB_PASSWORD=your-password \
-  -v $(pwd):/output \
-  ghcr.io/clelange/cern-sso-cli cookie --url https://gitlab.cern.ch --file /output/cookies.txt
+chmod +x cern-sso-cli
+sudo mv cern-sso-cli /usr/local/bin/
 ```
+
+Now you can run it from anywhere:
+```bash
+cern-sso-cli --version
+```
+
+### WebAuthn Requirements (YubiKey)
+If you intend to use hardware security keys (WebAuthn), you need `libfido2` installed.
+
+*   **macOS**: `brew install libfido2`
+*   **Ubuntu/Debian**: `sudo apt install libfido2-dev`
+*   **RHEL/AlmaLinux/Fedora**: `sudo dnf install libfido2-devel`
+
+## Quick Start
+The most common usage is getting cookies for a website:
+
+```bash
+cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+*   **Primary Accounts**: You will be prompted for your 2FA OTP (authenticator app) or can use your YubiKey (WebAuthn).
+*   **Service Accounts**: You will just be logged in (no 2FA required).
+
+## Concepts: Authentication & Account Types
+
+It is important to know which type of account you are using, as the authentication flow differs.
+
+### Primary Accounts (Standard User)
+*   **2FA is MANDATORY**. You cannot skip this.
+*   **Methods**:
+    *   **OTP**: Enter the 6-digit code from your authenticator app.
+    *   **WebAuthn**: Use a hardware key (YubiKey) or TouchID.
+*   **Kerberos**: If you have a valid Kerberos ticket (`kinit`), the tool detects it and avoids asking for your password, but you **still need to provide 2FA**.
+
+### Service Accounts
+*   **2FA is OPTIONAL** (usually disabled).
+*   **Ideal for Scripts/CI**: Since no human interaction is needed for 2FA, these are best for automation.
+*   **Usage**: The tool will simply authenticate using the Kerberos ticket or Password.
+
+For more details on CERN account types, see [CERN Authentication and Authorisation Services](https://auth.docs.cern.ch/).
 
 ## Usage
 
-### Authentication
+### 1. Authenticate & Save Cookies (curl/wget)
 
-The tool supports two authentication methods, tried in this order:
-
-#### 1. Kerberos Credential Cache (Recommended for Linux)
-
-If you already have a valid Kerberos ticket (from `kinit`), the tool will use it automatically:
+Get cookies for a generic CERN SSO site and save them to `cookies.txt`:
 
 ```bash
-# Get a Kerberos ticket first
-kinit your-username@CERN.CH
-
-# Verify your ticket
-klist
-
-# Run the tool - no environment variables needed!
-./cern-sso-cli cookie --url https://gitlab.cern.ch
+cern-sso-cli cookie --url https://gitlab.cern.ch --file cookies.txt
 ```
 
-**Linux:** Works automatically with the default credential cache (`/tmp/krb5cc_<UID>`).
+Use them with curl:
+```bash
+curl -b cookies.txt https://gitlab.cern.ch/api/v4/user
+```
 
-**macOS:** The default macOS credential cache uses an API-based storage (`API:xxx`). The tool can **automatically convert** this to a file-based cache, but requires one-time keychain setup:
+### 2. Get OIDC Access Token
+
+For OAuth/OIDC flows:
 
 ```bash
-# One-time setup: save password to macOS Keychain
-kinit --keychain your-username@CERN.CH
-
-# Now the tool works automatically
-./cern-sso-cli cookie --url https://gitlab.cern.ch
+cern-sso-cli token --url https://redirect-uri --client-id my-client-id
 ```
 
-The tool uses `kinit --keychain` internally to create a file cache from your keychain-stored password.
+### 3. Check Cookie Status
 
-**Alternative:** If you prefer not to use keychain, manually create a file-based cache:
+Check if your cookies are still valid:
 
 ```bash
-kinit -c /tmp/krb5cc_custom your-username@CERN.CH
-export KRB5CCNAME=/tmp/krb5cc_custom
-./cern-sso-cli cookie --url https://gitlab.cern.ch
+cern-sso-cli status --file cookies.txt
 ```
 
-#### 2. Username/Password (Fallback)
+Verify them against the server:
+```bash
+cern-sso-cli status --url https://gitlab.cern.ch --file cookies.txt
+```
 
-If no valid credential cache is found, set these environment variables:
+### 4. Device Grant (Headless/SSH)
+For machines without a browser or input method:
 
 ```bash
-export KRB_USERNAME='your-cern-username'
-export KRB_PASSWORD='your-cern-password'
+cern-sso-cli device --client-id my-client-id
 ```
 
-Or use [direnv](https://direnv.net/) with a `.envrc` file.
+## Advanced Authentication
 
-#### Multiple Kerberos Credentials
+### Kerberos Integration (Automatic)
+The tool prefers existing Kerberos tickets.
 
-On macOS, you may have multiple Kerberos tickets from different accounts (visible via `klist -l`). Use the `--user` flag to select a specific CERN.CH account:
+*   **Linux**: Detects `/tmp/krb5cc_...` automatically.
+*   **macOS**: Detects API-based system cache. If needed, it may ask you to run `kinit --keychain youruser@CERN.CH` once to synchronise.
+
+### Environment Variables (CI/CD)
+If you don't have a Kerberos ticket, you can pass credentials:
 
 ```bash
-# Use a specific account
-./cern-sso-cli -u alice cookie --url https://gitlab.cern.ch
-
-# With full principal
-./cern-sso-cli --user alice@CERN.CH cookie --url https://gitlab.cern.ch
+export KRB_USERNAME="myuser"
+export KRB_PASSWORD="mypassword"
+cern-sso-cli cookie --url ...
 ```
 
-If no matching cache is found but `KRB_PASSWORD` is set, the tool will authenticate using the specified username with that password.
+### WebAuthn (FIDO2 / YubiKey)
+If your account supports WebAuthn, it may prompt you to touch your key.
 
-If the specified user is not found, the error message lists available CERN.CH caches:
+**Flags**:
+*   `--use-webauthn`: Force WebAuthn usage.
+*   `--webauthn-pin 1234`: Provide PIN if required.
 
-```shell
-Error: no Kerberos cache found for user 'baduser@CERN.CH'
-Available CERN.CH caches:
-  alice@CERN.CH (expires Jan 3 22:26:00)
-  bob@CERN.CH (expires Jan 3 22:26:01)
-```
-
-#### 2FA/OTP Support
-
-If your CERN account has 2FA enabled (recommended for primary accounts), the tool will automatically prompt for a 6-digit OTP code during authentication:
-
-```bash
-./cern-sso-cli cookie --url https://gitlab.cern.ch
-```
-
-The tool will display:
-
-```shell
-Logging in with Kerberos...
-Enter your 6-digit OTP code for alice@CERN.CH: 123456
-```
-
-##### Password Manager Integration
-
-You can automate OTP entry using password manager CLI tools:
-
-**1Password:**
-
-```bash
-# Using --otp-command flag
-./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-command "op item get CERN --otp"
-
-# Using environment variable (set once)
-export CERN_SSO_OTP_COMMAND="op item get CERN --otp"
-./cern-sso-cli cookie --url https://gitlab.cern.ch
-```
-
-**Bitwarden:**
-
-```bash
-./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-command "bw get totp CERN"
-```
-
-**Direct OTP Value:**
-
-```bash
-# Provide OTP directly (useful for scripts)
-./cern-sso-cli cookie --url https://gitlab.cern.ch --otp 123456
-
-# Or via environment variable
-export CERN_SSO_OTP=123456
-./cern-sso-cli cookie --url https://gitlab.cern.ch
-```
-
-**Priority Order:** The tool checks OTP sources in this order:
-
-1. `--otp` flag
-2. `--otp-command` flag
-3. `CERN_SSO_OTP` environment variable
-4. `CERN_SSO_OTP_COMMAND` environment variable
-5. Interactive prompt (default)
-
-##### OTP Retry
-
-If an OTP fails (expired or typo), the tool automatically retries:
-
-- **Command sources** (`--otp-command`): Waits 3 seconds for TOTP window rollover, then re-executes the command
-- **Interactive prompt**: Re-prompts with "Invalid OTP. Try again (2/3):"
-- **Static values** (`--otp` flag): Cannot retry (fails immediately)
-
-Use `--otp-retries` to configure retry behavior:
-
-```bash
-# Custom retry count
-./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-retries 5
-
-# Disable retry (fail on first error)
-./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-retries 1
-```
-
-**Important Notes:**
-
-- OTP codes are validated to be exactly 6 digits
-
-#### WebAuthn/FIDO2 Support (YubiKey)
-
-For accounts with hardware security keys (YubiKey, etc.) as 2FA, the tool supports WebAuthn authentication:
-
-**Requirements:**
-
-- **macOS**: `brew install libfido2`
-- **Linux**: `sudo apt install libfido2-dev` (Ubuntu/Debian)
-- **Windows**: `scoop install libfido2`
-
-**Direct FIDO2 Authentication (Default):**
-
-```bash
-# Insert your security key and run
-./cern-sso-cli cookie --url https://gitlab.cern.ch
-
-# When prompted, touch your security key
-```
-
-**With PIN (if your key requires one):**
-
-```bash
-# Via flag
-./cern-sso-cli cookie --url https://gitlab.cern.ch --webauthn-pin 123456
-
-# Via environment variable
-export CERN_SSO_WEBAUTHN_PIN=123456
-./cern-sso-cli cookie --url https://gitlab.cern.ch
-```
-
-**WebAuthn Options:**
- 
- | Flag | Default | Description |
- |------|---------|-------------|
- | `--webauthn-pin` | (prompt) | PIN for security key |
- | `--webauthn-device` | (auto) | Path to specific FIDO2 device |
- | `--webauthn-timeout` | `30s` | Timeout for device interaction |
-
-**2FA Method Preference:**
-
-If your account has both OTP (authenticator app) and WebAuthn (security key) configured, the server chooses which to show first. You can override this with:
+## Global Options
 
 | Flag | Description |
-|------|-------------|
-| `--use-otp` | Always use OTP, even if WebAuthn is the server default |
-| `--use-webauthn` | Always use WebAuthn, even if OTP is the server default |
+| ---- | ----------- |
+| `--quiet`, `-q` | Suppress output (exit 0 = success). |
+| `--user`, `-u` | Specify username (e.g. `--user alice`). |
+| `--krb5-config` | Kerberos config source: `embedded` (default), `system`, or file path. |
+| `--otp` | Provide OTP code directly (e.g. `--otp 123456`). |
+| `--otp-command` | Command to fetch OTP (e.g. 1Password CLI). |
+| `--otp-retries` | Max OTP retry attempts (default 3). |
+| `--use-otp` | Use OTP even if WebAuthn is default. |
+| `--use-webauthn` | Use WebAuthn even if OTP is default. |
+| `--webauthn-browser` | Use browser for WebAuthn instead of direct FIDO2. |
+| `--webauthn-device` | Path to specific FIDO2 device (auto-detect if empty). |
+| `--webauthn-pin` | PIN for FIDO2 security key (alternative to prompt). |
+| `--webauthn-timeout` | Timeout in seconds for FIDO2 device interaction (default 30). |
 
-```bash
-# Force OTP authentication even if the server shows WebAuthn first
-./cern-sso-cli cookie --url https://gitlab.cern.ch --use-otp
-
-# Force WebAuthn authentication even if the server shows OTP first
-./cern-sso-cli cookie --url https://gitlab.cern.ch --use-webauthn
-```
-
-These flags are mutually exclusive.
-
-**Building Without WebAuthn:**
-
-If you don't need WebAuthn support (to avoid the libfido2 dependency):
-
-```bash
-make build-no-webauthn
-# Or directly:
-go build -tags nowebauthn -o cern-sso-cli .
-```
-
-### Save SSO Cookies
-
-Authenticate to a CERN SSO-protected URL and save cookies in Netscape format:
-
-```bash
-./cern-sso-cli cookie --url https://your-app.cern.ch --file cookies.txt
-```
-
-Use the cookies with curl:
-
-```bash
-curl -b cookies.txt https://your-app.cern.ch/api/resource
-```
-
-### Get Access Token
-
-Get an OIDC access token using Kerberos authentication:
-
-```bash
-./cern-sso-cli token --url https://redirect-uri --client-id your-client-id
-```
-
-### Device Authorization
-
-For environments without Kerberos, use Device Authorization Grant:
-
-```bash
-./cern-sso-cli device --client-id your-client-id
-```
-
-### Check Cookie Status
-
-Display the expiration information of stored cookies:
-
-```bash
-./cern-sso-cli status [--file cookies.txt] [--json]
-```
-
-**Important**: By default, `status` only checks cookie expiration times stored in the file **without making network requests**. This is fast but doesn't verify if cookies actually work.
-
-To verify cookies by making an actual HTTP request to a target URL:
-
-```bash
-./cern-sso-cli status --url https://gitlab.cern.ch [--file cookies.txt]
-```
-
-In quiet mode (`--quiet`), exits with code 0 if cookies are valid (and verified if `--url` is provided), 1 otherwise.
-
-Shows:
-
-- Cookie name, domain, and path
-- Expiration date/time
-- Status: ✓ Valid, ✗ Expired, or Session
-- Remaining time for valid cookies
-- Security flags: [S] for Secure, [H] for HttpOnly
-- Verification status (when `--url` is used)
-
-Use `--json` flag for machine-readable output:
-
-```bash
-./cern-sso-cli status --json
-# With verification:
-./cern-sso-cli status --url https://gitlab.cern.ch --json
-```
-
-### Global Options
-
-| Flag | Default | Description |
-| ---- | ------- | ----------- |
-| `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
-| `--user` or `-u` | (none) | Use specific CERN.CH Kerberos principal (e.g., `clange` or `clange@CERN.CH`). See [Multiple Kerberos Credentials](#multiple-kerberos-credentials). |
-| `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
-| `--otp` | (none) | 6-digit OTP code for 2FA (alternative to interactive prompt) |
-| `--otp-command` | (none) | Command to execute to get OTP (e.g., `op item get CERN --otp`) |
-| `--otp-retries` | `3` | Max OTP retry attempts (0 to disable retry) |
-| `--use-otp` | `false` | Use OTP for 2FA, even if WebAuthn is the server default |
-| `--use-webauthn` | `false` | Use WebAuthn for 2FA, even if OTP is the server default |
+## Subcommand Options
 
 ### Cookie Command
 
-| Flag | Default | Description |
-| ---- | ------- | ----------- |
-| `--url` | (required) | Target URL to authenticate against |
-| `--file` | `cookies.txt` | Output cookie file |
-| `--auth-host` | `auth.cern.ch` | Keycloak hostname |
-| `--force` | `false` | Force refresh of cookies, bypassing validation |
-| `--insecure` or `-k` | `false` | Skip certificate validation |
+| Flag | Description |
+| ---- | ----------- |
+| `--url` | Target URL to authenticate against (required). |
+| `--file` | Output cookie file (default "cookies.txt"). |
+| `--auth-host` | Authentication hostname (default "auth.cern.ch"). |
+| `--force` | Force refresh of cookies, bypassing validation. |
+| `--insecure`, `-k` | Skip certificate validation. |
 
 ### Token Command
 
-| Flag | Default | Description |
-| ---- | ------- | ----------- |
-| `--url` | (required) | OAuth redirect URI |
-| `--client-id` | (required) | OAuth client ID |
-| `--auth-host` | `auth.cern.ch` | Keycloak hostname |
-| `--realm` | `cern` | Keycloak realm |
-| `--insecure` or `-k` | `false` | Skip certificate validation |
+| Flag | Description |
+| ---- | ----------- |
+| `--url` | OAuth redirect URI (required). |
+| `--client-id` | OAuth client ID (required). |
+| `--auth-host` | Authentication hostname (default "auth.cern.ch"). |
+| `--realm` | Authentication realm (default "cern"). |
+| `--insecure`, `-k` | Skip certificate validation. |
 
 ### Device Command
 
-| Flag | Default | Description |
-| ---- | ------- | ----------- |
-| `--client-id` | (required) | OAuth client ID |
-| `--auth-host` | `auth.cern.ch` | Keycloak hostname |
-| `--realm` | `cern` | Keycloak realm |
-| `--insecure` or `-k` | `false` | Skip certificate validation |
+| Flag | Description |
+| ---- | ----------- |
+| `--client-id` | OAuth client ID (required). |
+| `--auth-host` | Authentication hostname (default "auth.cern.ch"). |
+| `--realm` | Authentication realm (default "cern"). |
+| `--insecure`, `-k` | Skip certificate validation. |
 
 ### Status Command
 
-| Flag | Default | Description |
-| ---- | ------- | ----------- |
-| `--file` | `cookies.txt` | Cookie file to check |
-| `--json` | `false` | Output as JSON instead of table format |
-| `--url` | (none) | URL to verify cookies against (makes HTTP request) |
-| `--insecure` or `-k` | `false` | Skip certificate validation when verifying |
-| `--auth-host` | `auth.cern.ch` | Authentication hostname for verification |
+| Flag | Description |
+| ---- | ----------- |
+| `--file` | Cookie file to check (default "cookies.txt"). |
+| `--json` | Output as JSON instead of table format. |
+| `--url` | URL to verify cookies against (makes HTTP request). |
+| `--auth-host` | Authentication hostname for verification (default "auth.cern.ch"). |
+| `--insecure`, `-k` | Skip certificate validation when verifying. |
 
-### Shell Completion
+## Container Support
 
-Generate shell completion scripts for tab completion:
+Run via Docker:
 
 ```bash
-cern-sso-cli completion [bash|zsh|fish|powershell]
+docker run --rm -v $(pwd):/output ghcr.io/clelange/cern-sso-cli \
+  cookie --url https://gitlab.cern.ch --file /output/cookies.txt
 ```
 
-**Bash:**
+## Shell Completion
+
+Generate completion scripts for bash, zsh, fish, or powershell.
 
 ```bash
-# Add to current session
+# Bash example
 source <(cern-sso-cli completion bash)
 
-# Install permanently (Linux)
-cern-sso-cli completion bash > /etc/bash_completion.d/cern-sso-cli
-
-# Install permanently (macOS with Homebrew)
-cern-sso-cli completion bash > $(brew --prefix)/etc/bash_completion.d/cern-sso-cli
+# Zsh example
+source <(cern-sso-cli completion zsh)
 ```
-
-**Zsh:**
-
-```bash
-# Enable completion if not already
-echo "autoload -U compinit; compinit" >> ~/.zshrc
-
-# Install
-cern-sso-cli completion zsh > "${fpath[1]}/_cern-sso-cli"
-```
-
-**Fish:**
-
-```bash
-cern-sso-cli completion fish > ~/.config/fish/completions/cern-sso-cli.fish
-```
-
-## Requirements
-
-- Valid CERN credentials
-- Network access to CERN Kerberos (cerndc.cern.ch) and SSO (auth.cern.ch)
-- **Optional**: System krb5.conf (only needed if using `--krb5-config system`)
-
-## Environment Variables
-
-| Variable | Description |
-| -------- | ----------- |
-| `KRB_USERNAME` | Kerberos username (fallback if no credential cache) |
-| `KRB_PASSWORD` | Kerberos password |
-| `KRB5CCNAME` | Path to Kerberos credential cache |
-| `KRB5_CONFIG` | Path to system krb5.conf (used with `--krb5-config system`) |
-| `CERN_SSO_OTP` | 6-digit OTP code for 2FA |
-| `CERN_SSO_OTP_COMMAND` | Command to execute to get OTP code |
 
 ## Comparison to Python Version
-
-This tool is a Go port of the [auth-get-sso-cookie](https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie) Python package. Key differences:
+This is a Go port of [auth-get-sso-cookie](https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie).
 
 | Feature | Python | Go |
 | ------- | ------ | -- |
