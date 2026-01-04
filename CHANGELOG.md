@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/clelange/cern-sso-cli/compare/v0.19.0...v0.19.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* **release:** add GH_TOKEN for gh release download command ([67c51f9](https://github.com/clelange/cern-sso-cli/commit/67c51f96816cb1543bdc8776ff10aaa37be0ec3a))
+
 ## [0.19.0](https://github.com/clelange/cern-sso-cli/compare/v0.18.0...v0.19.0) (2026-01-04)
 
 
