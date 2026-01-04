@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/clelange/cern-sso-cli/compare/v0.14.0...v0.15.0) (2026-01-04)
+
+
+### Features
+
+* **auth:** add OTP command integration for password managers ([#38](https://github.com/clelange/cern-sso-cli/issues/38)) ([5719a80](https://github.com/clelange/cern-sso-cli/commit/5719a80491c7f67ac132d86de769fc11fa569daa))
+
 ## [0.14.0](https://github.com/clelange/cern-sso-cli/compare/v0.13.0...v0.14.0) (2026-01-03)
 
 
