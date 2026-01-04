@@ -229,3 +229,102 @@ func containsAt(s, substr string) bool {
 	}
 	return false
 }
+
+// Tests for OTP retry functionality
+
+func TestOTPProvider_GetMaxRetries_Default(t *testing.T) {
+	p := &OTPProvider{}
+	if p.GetMaxRetries() != 3 {
+		t.Errorf("GetMaxRetries() = %d, want 3 (default)", p.GetMaxRetries())
+	}
+}
+
+func TestOTPProvider_GetMaxRetries_Configured(t *testing.T) {
+	p := &OTPProvider{MaxRetries: 5}
+	if p.GetMaxRetries() != 5 {
+		t.Errorf("GetMaxRetries() = %d, want 5", p.GetMaxRetries())
+	}
+}
+
+func TestOTPProvider_GetMaxRetries_ZeroDefault(t *testing.T) {
+	p := &OTPProvider{MaxRetries: 0}
+	if p.GetMaxRetries() != 3 {
+		t.Errorf("GetMaxRetries() = %d, want 3 (default for zero)", p.GetMaxRetries())
+	}
+}
+
+func TestOTPProvider_RefreshOTP_Command(t *testing.T) {
+	p := &OTPProvider{OTPCommand: "echo 789012"}
+	otp, err := p.RefreshOTP("testuser", OTPSourceCommand, 2, 3)
+	if err != nil {
+		t.Fatalf("RefreshOTP failed: %v", err)
+	}
+	if otp != "789012" {
+		t.Errorf("RefreshOTP returned %q, want %q", otp, "789012")
+	}
+}
+
+func TestOTPProvider_RefreshOTP_StaticFlagFails(t *testing.T) {
+	p := &OTPProvider{OTP: "123456"}
+	_, err := p.RefreshOTP("testuser", OTPSourceFlag, 2, 3)
+	if err == nil {
+		t.Error("RefreshOTP expected error for static flag, got nil")
+	}
+	if !contains(err.Error(), "cannot refresh static OTP") {
+		t.Errorf("RefreshOTP error = %q, want to contain 'cannot refresh static OTP'", err.Error())
+	}
+}
+
+func TestOTPProvider_RefreshOTP_StaticEnvFails(t *testing.T) {
+	// Set static env (not command)
+	os.Setenv(EnvOTP, "123456")
+	os.Unsetenv(EnvOTPCommand)
+	defer os.Unsetenv(EnvOTP)
+
+	p := &OTPProvider{}
+	_, err := p.RefreshOTP("testuser", OTPSourceEnv, 2, 3)
+	if err == nil {
+		t.Error("RefreshOTP expected error for static env, got nil")
+	}
+}
+
+func TestOTPProvider_RefreshOTP_EnvCommand(t *testing.T) {
+	os.Setenv(EnvOTPCommand, "echo 345678")
+	defer os.Unsetenv(EnvOTPCommand)
+
+	p := &OTPProvider{}
+	otp, err := p.RefreshOTP("testuser", OTPSourceEnv, 2, 3)
+	if err != nil {
+		t.Fatalf("RefreshOTP failed: %v", err)
+	}
+	if otp != "345678" {
+		t.Errorf("RefreshOTP returned %q, want %q", otp, "345678")
+	}
+}
+
+func TestIsRefreshable(t *testing.T) {
+	tests := []struct {
+		source      string
+		envCmd      string
+		refreshable bool
+	}{
+		{OTPSourceCommand, "", true},
+		{OTPSourcePrompt, "", true},
+		{OTPSourceFlag, "", false},
+		{OTPSourceEnv, "echo 123456", true}, // With command env
+		{OTPSourceEnv, "", false},           // Static env
+	}
+
+	for _, tc := range tests {
+		os.Unsetenv(EnvOTPCommand)
+		if tc.envCmd != "" {
+			os.Setenv(EnvOTPCommand, tc.envCmd)
+		}
+
+		result := IsRefreshable(tc.source)
+		if result != tc.refreshable {
+			t.Errorf("IsRefreshable(%q) with envCmd=%q = %v, want %v", tc.source, tc.envCmd, result, tc.refreshable)
+		}
+	}
+	os.Unsetenv(EnvOTPCommand)
+}

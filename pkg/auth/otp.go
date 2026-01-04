@@ -27,6 +27,7 @@ const (
 type OTPProvider struct {
 	OTP        string // Direct OTP value (from --otp flag or CERN_SSO_OTP)
 	OTPCommand string // Command to execute (from --otp-command flag or CERN_SSO_OTP_COMMAND)
+	MaxRetries int    // Maximum retry attempts (default: 3)
 }
 
 // GetOTP retrieves an OTP code using the configured sources.
@@ -126,4 +127,55 @@ func promptForOTPInteractive(username string) (string, error) {
 		return "", fmt.Errorf("failed to read input: %w", err)
 	}
 	return validateOTP(code)
+}
+
+// GetMaxRetries returns the configured max retries, defaulting to 3.
+func (p *OTPProvider) GetMaxRetries() int {
+	if p.MaxRetries <= 0 {
+		return 3 // Default
+	}
+	return p.MaxRetries
+}
+
+// RefreshOTP gets a fresh OTP for retry attempts.
+// For command sources, it waits for TOTP window rollover then re-executes.
+// For interactive sources, it re-prompts the user.
+// For static flag sources, it returns an error (cannot refresh).
+func (p *OTPProvider) RefreshOTP(username string, source string, attempt, maxRetries int) (string, error) {
+	switch source {
+	case OTPSourceFlag:
+		// Static flag value cannot be refreshed
+		return "", fmt.Errorf("cannot refresh static OTP value from --otp flag")
+
+	case OTPSourceCommand:
+		// Re-execute the command (already waited in caller)
+		return executeOTPCommand(p.OTPCommand)
+
+	case OTPSourceEnv:
+		// Check if it's a command from env or static value
+		if envCmd := os.Getenv(EnvOTPCommand); envCmd != "" {
+			return executeOTPCommand(envCmd)
+		}
+		// Static env value cannot be refreshed
+		return "", fmt.Errorf("cannot refresh static OTP value from %s", EnvOTP)
+
+	case OTPSourcePrompt:
+		// Re-prompt the user
+		fmt.Printf("Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
+		var code string
+		_, err := fmt.Scanln(&code)
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+		return validateOTP(code)
+
+	default:
+		return "", fmt.Errorf("unknown OTP source: %s", source)
+	}
+}
+
+// IsRefreshable returns true if the OTP source supports refresh/retry.
+func IsRefreshable(source string) bool {
+	return source == OTPSourceCommand || source == OTPSourcePrompt ||
+		(source == OTPSourceEnv && os.Getenv(EnvOTPCommand) != "")
 }
