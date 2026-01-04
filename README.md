@@ -260,10 +260,25 @@ export CERN_SSO_WEBAUTHN_PIN=123456
  | `--webauthn-pin` | (prompt) | PIN for security key |
  | `--webauthn-device` | (auto) | Path to specific FIDO2 device |
  | `--webauthn-timeout` | `30s` | Timeout for device interaction |
- | `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
 
-| `--webauthn-timeout` | `30s` | Timeout for device interaction |
-| `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
+**2FA Method Preference:**
+
+If your account has both OTP (authenticator app) and WebAuthn (security key) configured, the server chooses which to show first. You can override this with:
+
+| Flag | Description |
+|------|-------------|
+| `--use-otp` | Always use OTP, even if WebAuthn is the server default |
+| `--use-webauthn` | Always use WebAuthn, even if OTP is the server default |
+
+```bash
+# Force OTP authentication even if the server shows WebAuthn first
+./cern-sso-cli cookie --url https://gitlab.cern.ch --use-otp
+
+# Force WebAuthn authentication even if the server shows OTP first
+./cern-sso-cli cookie --url https://gitlab.cern.ch --use-webauthn
+```
+
+These flags are mutually exclusive.
 
 **Building Without WebAuthn:**
 
@@ -350,6 +365,8 @@ Use `--json` flag for machine-readable output:
 | `--otp` | (none) | 6-digit OTP code for 2FA (alternative to interactive prompt) |
 | `--otp-command` | (none) | Command to execute to get OTP (e.g., `op item get CERN --otp`) |
 | `--otp-retries` | `3` | Max OTP retry attempts (0 to disable retry) |
+| `--use-otp` | `false` | Use OTP for 2FA, even if WebAuthn is the server default |
+| `--use-webauthn` | `false` | Use WebAuthn for 2FA, even if OTP is the server default |
 
 ### Cookie Command
 
