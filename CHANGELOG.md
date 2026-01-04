@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/clelange/cern-sso-cli/compare/v0.19.1...v0.20.0) (2026-01-04)
+
+
+### Features
+
+* **install:** add curl-able installation script ([b3a4977](https://github.com/clelange/cern-sso-cli/commit/b3a49772fd4b5a0cae1bf1a1d9026e5e314f314e)), closes [#59](https://github.com/clelange/cern-sso-cli/issues/59)
+
 ## [0.19.1](https://github.com/clelange/cern-sso-cli/compare/v0.19.0...v0.19.1) (2026-01-04)
 
 
