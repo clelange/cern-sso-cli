@@ -17,7 +17,20 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 
 To use the tool without typing `./` or worrying about paths, install it to your system PATH.
 
-**Option 1: Using Go (Recommended)**
+**Option 1: One-line install (Recommended)**
+The fastest way to install on Linux or macOS:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/clelange/cern-sso-cli/main/scripts/install.sh)"
+```
+
+This script will:
+- Detect your OS and architecture
+- Check for libfido2 availability and download the appropriate binary (with or without WebAuthn support)
+- Install to `/usr/local/bin`, `~/bin`, or `~/.local/bin` (based on permissions)
+- Automatically configure your PATH if needed
+
+**Option 2: Using Go**
 If you have Go installed on macOS or Linux:
 
 ```bash
@@ -25,7 +38,7 @@ go install github.com/clelange/cern-sso-cli@latest
 ```
 Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 
-**Option 2: Download Binary**
+**Option 3: Download Binary**
 Two binary types are available for each platform:
 - **WebAuthn-enabled binaries** (default, `*-webauthn` suffix): Support hardware keys (YubiKey), require libfido2 on your system. Available for all platforms.
 - **Portable binaries** (no suffix): Work on all systems without libfido2, WebAuthn disabled. Available for all platforms (macOS Intel/ARM64, Linux AMD64/ARM64).
