@@ -135,6 +135,10 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 	// Configure OTP provider for 2FA support
 	kerbClient.SetOTPProvider(GetOTPProvider())
 
+	// Configure WebAuthn provider for FIDO2 2FA support
+	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
+	kerbClient.SetPreferWebAuthn(PreferWebAuthn())
+
 	result, err := kerbClient.TryLoginWithCookies(targetURL, authHost, cookies)
 	if err != nil {
 		kerbClient.Close()
@@ -188,6 +192,10 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 
 	// Configure OTP provider for 2FA support
 	kerbClient.SetOTPProvider(GetOTPProvider())
+
+	// Configure WebAuthn provider for FIDO2 2FA support
+	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
+	kerbClient.SetPreferWebAuthn(PreferWebAuthn())
 
 	logPrintln("Logging in with Kerberos...")
 	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)

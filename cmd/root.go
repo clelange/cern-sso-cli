@@ -23,6 +23,12 @@ var (
 	otpCode    string
 	otpCommand string
 	otpRetries int
+	// WebAuthn flags
+	webauthnPIN     string
+	webauthnDevice  string
+	webauthnTimeout int
+	preferWebAuthn  bool
+	webauthnBrowser bool
 )
 
 // version is set from main.go
@@ -66,6 +72,12 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&otpCode, "otp", "", "6-digit OTP code for 2FA (alternative to prompt)")
 	rootCmd.PersistentFlags().StringVar(&otpCommand, "otp-command", "", "Command to execute to get OTP (e.g., 'op item get CERN --otp')")
 	rootCmd.PersistentFlags().IntVar(&otpRetries, "otp-retries", 3, "Max OTP retry attempts (0 to disable retry)")
+	// WebAuthn flags
+	rootCmd.PersistentFlags().StringVar(&webauthnPIN, "webauthn-pin", "", "PIN for FIDO2 security key (alternative to prompt)")
+	rootCmd.PersistentFlags().StringVar(&webauthnDevice, "webauthn-device", "", "Path to specific FIDO2 device (auto-detect if empty)")
+	rootCmd.PersistentFlags().IntVar(&webauthnTimeout, "webauthn-timeout", 30, "Timeout in seconds for FIDO2 device interaction")
+	rootCmd.PersistentFlags().BoolVar(&preferWebAuthn, "prefer-webauthn", false, "Prefer WebAuthn over OTP when both available")
+	rootCmd.PersistentFlags().BoolVar(&webauthnBrowser, "webauthn-browser", false, "Use browser for WebAuthn instead of direct FIDO2")
 }
 
 // logInfo prints a formatted message if not in quiet mode.
@@ -113,4 +125,19 @@ func GetOTPProvider() *auth.OTPProvider {
 		OTPCommand: otpCommand,
 		MaxRetries: otpRetries,
 	}
+}
+
+// GetWebAuthnProvider returns a WebAuthn provider configured with CLI flags.
+func GetWebAuthnProvider() *auth.WebAuthnProvider {
+	return &auth.WebAuthnProvider{
+		PIN:        webauthnPIN,
+		DevicePath: webauthnDevice,
+		Timeout:    time.Duration(webauthnTimeout) * time.Second,
+		UseBrowser: webauthnBrowser,
+	}
+}
+
+// PreferWebAuthn returns true if WebAuthn should be preferred over OTP.
+func PreferWebAuthn() bool {
+	return preferWebAuthn
 }

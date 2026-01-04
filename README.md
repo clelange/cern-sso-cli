@@ -221,9 +221,59 @@ Use `--otp-retries` to configure retry behavior:
 
 **Important Notes:**
 
-- Only software token-based 2FA is supported
-- Hardware dongles (e.g., YubiKey) are **not currently supported**
 - OTP codes are validated to be exactly 6 digits
+
+#### WebAuthn/FIDO2 Support (YubiKey)
+
+For accounts with hardware security keys (YubiKey, etc.) as 2FA, the tool supports WebAuthn authentication:
+
+**Requirements:**
+
+- **macOS**: `brew install libfido2`
+- **Linux**: `sudo apt install libfido2-dev` (Ubuntu/Debian)
+- **Windows**: `scoop install libfido2`
+
+**Direct FIDO2 Authentication (Default):**
+
+```bash
+# Insert your security key and run
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+
+# When prompted, touch your security key
+```
+
+**With PIN (if your key requires one):**
+
+```bash
+# Via flag
+./cern-sso-cli cookie --url https://gitlab.cern.ch --webauthn-pin 123456
+
+# Via environment variable
+export CERN_SSO_WEBAUTHN_PIN=123456
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+**WebAuthn Options:**
+ 
+ | Flag | Default | Description |
+ |------|---------|-------------|
+ | `--webauthn-pin` | (prompt) | PIN for security key |
+ | `--webauthn-device` | (auto) | Path to specific FIDO2 device |
+ | `--webauthn-timeout` | `30s` | Timeout for device interaction |
+ | `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
+
+| `--webauthn-timeout` | `30s` | Timeout for device interaction |
+| `--prefer-webauthn` | `false` | Prefer WebAuthn over OTP |
+
+**Building Without WebAuthn:**
+
+If you don't need WebAuthn support (to avoid the libfido2 dependency):
+
+```bash
+make build-no-webauthn
+# Or directly:
+go build -tags nowebauthn -o cern-sso-cli .
+```
 
 ### Save SSO Cookies
 
