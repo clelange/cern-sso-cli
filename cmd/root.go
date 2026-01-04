@@ -20,6 +20,8 @@ var (
 	quiet      bool
 	krbUser    string
 	krb5Config string
+	otpCode    string
+	otpCommand string
 )
 
 // version is set from main.go
@@ -60,6 +62,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress all output (except critical errors)")
 	rootCmd.PersistentFlags().StringVarP(&krbUser, "user", "u", "", "Use specific CERN.CH Kerberos principal (e.g., clange or clange@CERN.CH)")
 	rootCmd.PersistentFlags().StringVar(&krb5Config, "krb5-config", "", "Kerberos config source: 'embedded' (default), 'system', or file path")
+	rootCmd.PersistentFlags().StringVar(&otpCode, "otp", "", "6-digit OTP code for 2FA (alternative to prompt)")
+	rootCmd.PersistentFlags().StringVar(&otpCommand, "otp-command", "", "Command to execute to get OTP (e.g., 'op item get CERN --otp')")
 }
 
 // logInfo prints a formatted message if not in quiet mode.
@@ -98,4 +102,12 @@ func formatDuration(d time.Duration) string {
 // This is a convenience wrapper around auth.NormalizePrincipal.
 func normalizeUsername(username string) string {
 	return auth.NormalizePrincipal(username)
+}
+
+// GetOTPProvider returns an OTP provider configured with CLI flags.
+func GetOTPProvider() *auth.OTPProvider {
+	return &auth.OTPProvider{
+		OTP:        otpCode,
+		OTPCommand: otpCommand,
+	}
 }

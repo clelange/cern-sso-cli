@@ -106,6 +106,7 @@ type KerberosClient struct {
 	collectedCookies []*http.Cookie // Stores full cookie attributes from Set-Cookie headers
 	version          string         // Version string for User-Agent header
 	username         string         // Username for display in prompts
+	otpProvider      *OTPProvider   // Optional OTP provider for 2FA
 }
 
 // NewKerberosClient creates a new Kerberos client.
@@ -345,6 +346,24 @@ func (t *cookieInterceptTransport) RoundTrip(req *http.Request) (*http.Response,
 // Close cleans up the Kerberos client.
 func (k *KerberosClient) Close() {
 	k.krbClient.Destroy()
+}
+
+// SetOTPProvider sets the OTP provider for 2FA authentication.
+func (k *KerberosClient) SetOTPProvider(provider *OTPProvider) {
+	k.otpProvider = provider
+}
+
+// getOTP retrieves an OTP code using the configured provider or interactive prompt.
+func (k *KerberosClient) getOTP() (string, string, error) {
+	if k.otpProvider != nil {
+		return k.otpProvider.GetOTP(k.username)
+	}
+	// Fallback to interactive prompt if no provider configured
+	otp, err := promptForOTPInteractive(k.username)
+	if err != nil {
+		return "", "", err
+	}
+	return otp, OTPSourcePrompt, nil
 }
 
 // GetHTTPClient returns the HTTP client for non-SPNEGO requests.
@@ -745,7 +764,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				return nil, &LoginError{Message: fmt.Sprintf("failed to parse OTP form: %v", err)}
 			}
 
-			otpCode, err := promptForOTP(k.username)
+			otpCode, _, err := k.getOTP()
 			if err != nil {
 				return nil, &LoginError{Message: fmt.Sprintf("failed to read OTP: %v", err)}
 			}
@@ -863,30 +882,6 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		RedirectURI: redirectURI,
 		Username:    k.username,
 	}, nil
-}
-
-// promptForOTP prompts the user for a 6-digit OTP code.
-func promptForOTP(username string) (string, error) {
-	if username != "" {
-		fmt.Printf("Enter your 6-digit OTP code for %s: ", username)
-	} else {
-		fmt.Print("Enter your 6-digit OTP code: ")
-	}
-	var code string
-	_, err := fmt.Scanln(&code)
-	if err != nil {
-		return "", fmt.Errorf("failed to read input: %w", err)
-	}
-	code = strings.TrimSpace(code)
-	if len(code) != 6 {
-		return "", fmt.Errorf("OTP must be 6 digits")
-	}
-	for _, c := range code {
-		if c < '0' || c > '9' {
-			return "", fmt.Errorf("OTP must contain only digits")
-		}
-	}
-	return code, nil
 }
 
 // CollectCookies collects all cookies from the session with full attributes.

@@ -161,11 +161,51 @@ Logging in with Kerberos...
 Enter your 6-digit OTP code for alice@CERN.CH: 123456
 ```
 
+##### Password Manager Integration
+
+You can automate OTP entry using password manager CLI tools:
+
+**1Password:**
+
+```bash
+# Using --otp-command flag
+./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-command "op item get CERN --otp"
+
+# Using environment variable (set once)
+export CERN_SSO_OTP_COMMAND="op item get CERN --otp"
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+**Bitwarden:**
+
+```bash
+./cern-sso-cli cookie --url https://gitlab.cern.ch --otp-command "bw get totp CERN"
+```
+
+**Direct OTP Value:**
+
+```bash
+# Provide OTP directly (useful for scripts)
+./cern-sso-cli cookie --url https://gitlab.cern.ch --otp 123456
+
+# Or via environment variable
+export CERN_SSO_OTP=123456
+./cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+**Priority Order:** The tool checks OTP sources in this order:
+
+1. `--otp` flag
+2. `--otp-command` flag
+3. `CERN_SSO_OTP` environment variable
+4. `CERN_SSO_OTP_COMMAND` environment variable
+5. Interactive prompt (default)
+
 **Important Notes:**
 
 - Only software token-based 2FA is supported
 - Hardware dongles (e.g., YubiKey) are **not currently supported**
-- The OTP code is entered interactively and is not stored anywhere
+- OTP codes are validated to be exactly 6 digits
 
 ### Save SSO Cookies
 
@@ -239,6 +279,8 @@ Use `--json` flag for machine-readable output:
 | `--quiet` or `-q` | `false` | Suppress all output (except critical errors). Exit code 0 on success, non-zero otherwise. |
 | `--user` or `-u` | (none) | Use specific CERN.CH Kerberos principal (e.g., `clange` or `clange@CERN.CH`). See [Multiple Kerberos Credentials](#multiple-kerberos-credentials). |
 | `--krb5-config` | `embedded` | Kerberos config source: `embedded` (built-in CERN.CH config), `system` (uses `/etc/krb5.conf` or `KRB5_CONFIG` env var), or a file path |
+| `--otp` | (none) | 6-digit OTP code for 2FA (alternative to interactive prompt) |
+| `--otp-command` | (none) | Command to execute to get OTP (e.g., `op item get CERN --otp`) |
 
 ### Cookie Command
 
@@ -330,6 +372,8 @@ cern-sso-cli completion fish > ~/.config/fish/completions/cern-sso-cli.fish
 | `KRB_PASSWORD` | Kerberos password |
 | `KRB5CCNAME` | Path to Kerberos credential cache |
 | `KRB5_CONFIG` | Path to system krb5.conf (used with `--krb5-config system`) |
+| `CERN_SSO_OTP` | 6-digit OTP code for 2FA |
+| `CERN_SSO_OTP_COMMAND` | Command to execute to get OTP code |
 
 ## Comparison to Python Version
 
