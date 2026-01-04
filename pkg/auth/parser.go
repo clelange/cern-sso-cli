@@ -355,3 +355,145 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 
 	return webauthnForm, nil
 }
+
+// 2FA method preference constants
+const (
+	MethodOTP      = "otp"
+	MethodWebAuthn = "webauthn"
+)
+
+// TryAnotherWayForm represents the form to switch 2FA methods.
+type TryAnotherWayForm struct {
+	Action string // Form action URL
+}
+
+// AuthMethod represents an available 2FA authentication method.
+type AuthMethod struct {
+	ExecutionID string // The authenticationExecution value to submit
+	Type        string // "otp" or "webauthn"
+	Label       string // Human-readable label (e.g., "Authenticator Application")
+}
+
+// MethodSelectionPage represents the page where users can choose their 2FA method.
+type MethodSelectionPage struct {
+	Action  string       // Form action URL
+	Methods []AuthMethod // Available authentication methods
+}
+
+// HasTryAnotherWay checks if the page has a "Try Another Way" option.
+func HasTryAnotherWay(body string) bool {
+	return strings.Contains(body, `id="kc-select-try-another-way-form"`)
+}
+
+// ParseTryAnotherWayForm extracts the "Try Another Way" form from a 2FA page.
+func ParseTryAnotherWayForm(r io.Reader) (*TryAnotherWayForm, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	form := doc.Find("#kc-select-try-another-way-form")
+	if form.Length() == 0 {
+		return nil, errors.New("Try Another Way form not found")
+	}
+
+	action, exists := form.Attr("action")
+	if !exists || action == "" {
+		return nil, errors.New("Try Another Way form has no action")
+	}
+
+	return &TryAnotherWayForm{
+		Action: action,
+	}, nil
+}
+
+// ParseMethodSelectionPage extracts the available 2FA methods from the selection page.
+// This page is shown after clicking "Try Another Way".
+func ParseMethodSelectionPage(r io.Reader) (*MethodSelectionPage, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	form := doc.Find("#kc-select-credential-form")
+	if form.Length() == 0 {
+		return nil, errors.New("method selection form not found")
+	}
+
+	action, exists := form.Attr("action")
+	if !exists || action == "" {
+		return nil, errors.New("method selection form has no action")
+	}
+
+	page := &MethodSelectionPage{
+		Action:  action,
+		Methods: make([]AuthMethod, 0),
+	}
+
+	// Find all submit buttons with authenticationExecution value
+	form.Find("button[name='authenticationExecution']").Each(func(i int, s *goquery.Selection) {
+		executionID, exists := s.Attr("value")
+		if !exists || executionID == "" {
+			return
+		}
+
+		method := AuthMethod{
+			ExecutionID: executionID,
+		}
+
+		// Determine method type from icon class or label text
+		// OTP: has "fa-mobile" icon and "Authenticator Application" text
+		// WebAuthn: has "fa-key" icon and "Security Key" text
+		if s.Find(".fa-mobile").Length() > 0 {
+			method.Type = MethodOTP
+		} else if s.Find(".fa-key").Length() > 0 {
+			method.Type = MethodWebAuthn
+		}
+
+		// Extract label from headline element
+		headline := s.Find(".select-auth-box-headline")
+		if headline.Length() > 0 {
+			method.Label = strings.TrimSpace(headline.Text())
+			// Also use label as fallback for type detection
+			if method.Type == "" {
+				labelLower := strings.ToLower(method.Label)
+				if strings.Contains(labelLower, "authenticator") || strings.Contains(labelLower, "otp") {
+					method.Type = MethodOTP
+				} else if strings.Contains(labelLower, "security key") || strings.Contains(labelLower, "webauthn") {
+					method.Type = MethodWebAuthn
+				}
+			}
+		}
+
+		page.Methods = append(page.Methods, method)
+	})
+
+	if len(page.Methods) == 0 {
+		return nil, errors.New("no authentication methods found on selection page")
+	}
+
+	return page, nil
+}
+
+// FindMethod finds a method by type in the selection page.
+// Returns nil if the method is not available.
+func (p *MethodSelectionPage) FindMethod(methodType string) *AuthMethod {
+	for i := range p.Methods {
+		if p.Methods[i].Type == methodType {
+			return &p.Methods[i]
+		}
+	}
+	return nil
+}
+
+// GetCurrentMethod detects which 2FA method the current page is showing.
+// Returns "otp", "webauthn", or "" if neither is detected.
+func GetCurrentMethod(body string) string {
+	if IsOTPRequired(body) {
+		return MethodOTP
+	}
+	if IsWebAuthnRequired(body) {
+		return MethodWebAuthn
+	}
+	return ""
+}
