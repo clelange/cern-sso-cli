@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
@@ -13,7 +14,14 @@ var (
 	tokenAuthHost string
 	tokenRealm    string
 	tokenInsecure bool
+	tokenJSON     bool
 )
+
+// TokenOutput represents the JSON output for the token command.
+type TokenOutput struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}
 
 var tokenCmd = &cobra.Command{
 	Use:   "token",
@@ -35,6 +43,7 @@ func init() {
 	tokenCmd.Flags().StringVar(&tokenAuthHost, "auth-host", defaultAuthHostname, "Authentication hostname")
 	tokenCmd.Flags().StringVar(&tokenRealm, "realm", defaultAuthRealm, "Authentication realm")
 	tokenCmd.Flags().BoolVarP(&tokenInsecure, "insecure", "k", false, "Skip certificate validation")
+	tokenCmd.Flags().BoolVar(&tokenJSON, "json", false, "Output result as JSON")
 
 	tokenCmd.MarkFlagRequired("url")
 	tokenCmd.MarkFlagRequired("client-id")
@@ -75,6 +84,15 @@ func runToken(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
-	fmt.Println(token)
+	if tokenJSON {
+		output := TokenOutput{
+			AccessToken: token,
+			TokenType:   "Bearer",
+		}
+		data, _ := json.Marshal(output)
+		fmt.Println(string(data))
+	} else {
+		fmt.Println(token)
+	}
 	return nil
 }
