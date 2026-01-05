@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
@@ -12,7 +13,17 @@ var (
 	deviceAuthHost string
 	deviceRealm    string
 	deviceInsecure bool
+	deviceJSON     bool
 )
+
+// DeviceOutput represents the JSON output for the device command.
+type DeviceOutput struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+}
 
 var deviceCmd = &cobra.Command{
 	Use:   "device",
@@ -33,6 +44,7 @@ func init() {
 	deviceCmd.Flags().StringVar(&deviceAuthHost, "auth-host", defaultAuthHostname, "Authentication hostname")
 	deviceCmd.Flags().StringVar(&deviceRealm, "realm", defaultAuthRealm, "Authentication realm")
 	deviceCmd.Flags().BoolVarP(&deviceInsecure, "insecure", "k", false, "Skip certificate validation")
+	deviceCmd.Flags().BoolVar(&deviceJSON, "json", false, "Output result as JSON")
 
 	deviceCmd.MarkFlagRequired("client-id")
 }
@@ -51,11 +63,23 @@ func runDevice(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("device login failed: %w", err)
 	}
 
-	fmt.Println("Access Token:")
-	fmt.Println(token.AccessToken)
-	if token.RefreshToken != "" {
-		fmt.Println("\nRefresh Token:")
-		fmt.Println(token.RefreshToken)
+	if deviceJSON {
+		output := DeviceOutput{
+			AccessToken:  token.AccessToken,
+			TokenType:    token.TokenType,
+			ExpiresIn:    token.ExpiresIn,
+			RefreshToken: token.RefreshToken,
+			Scope:        token.Scope,
+		}
+		data, _ := json.Marshal(output)
+		fmt.Println(string(data))
+	} else {
+		fmt.Println("Access Token:")
+		fmt.Println(token.AccessToken)
+		if token.RefreshToken != "" {
+			fmt.Println("\nRefresh Token:")
+			fmt.Println(token.RefreshToken)
+		}
 	}
 	return nil
 }
