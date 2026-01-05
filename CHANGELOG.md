@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/clelange/cern-sso-cli/compare/v0.20.0...v0.21.0) (2026-01-05)
+
+
+### Features
+
+* add --json output flag to cookie, token, and device commands ([#65](https://github.com/clelange/cern-sso-cli/issues/65)) ([94542f2](https://github.com/clelange/cern-sso-cli/commit/94542f232612861a10c76e839fbd41d64781b4ce))
+
 ## [0.20.0](https://github.com/clelange/cern-sso-cli/compare/v0.19.1...v0.20.0) (2026-01-04)
 
 
