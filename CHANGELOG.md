@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/clelange/cern-sso-cli/compare/v0.21.0...v0.22.0) (2026-01-06)
+
+
+### Features
+
+* **auth:** add interrupt signal handling for WebAuthn assertion ([d2102c1](https://github.com/clelange/cern-sso-cli/commit/d2102c15bf3e3b3da7f702a84c3f957aeb92f2b6))
+
 ## [0.21.0](https://github.com/clelange/cern-sso-cli/compare/v0.20.0...v0.21.0) (2026-01-05)
 
 
