@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -164,17 +165,43 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 
 	fmt.Println("Touch your security key...")
 
-	// Perform the assertion
-	// If no credential IDs and no PIN, try with nil - some devices support resident key discovery
-	assertion, err := device.Assertion(
-		form.RPID,
-		clientDataHash[:], // SHA-256 hash of clientDataJSON (32 bytes)
-		credentialIDs,     // nil for resident key discovery
-		pin,
-		&libfido2.AssertionOpts{
-			UP: libfido2.True, // Require user presence
-		},
-	)
+	// Run assertion in goroutine to allow signal handling
+	type assertionResult struct {
+		assertion *libfido2.Assertion
+		err       error
+	}
+	resultChan := make(chan assertionResult, 1)
+
+	go func() {
+		assertion, err := device.Assertion(
+			form.RPID,
+			clientDataHash[:], // SHA-256 hash of clientDataJSON (32 bytes)
+			credentialIDs,     // nil for resident key discovery
+			pin,
+			&libfido2.AssertionOpts{
+				UP: libfido2.True, // Require user presence
+			},
+		)
+		resultChan <- assertionResult{assertion, err}
+	}()
+
+	// Wait for assertion or interrupt signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	defer signal.Stop(sigChan)
+
+	var assertion *libfido2.Assertion
+	select {
+	case result := <-resultChan:
+		assertion = result.assertion
+		err = result.err
+	case <-sigChan:
+		fmt.Println("\nInterrupted. Closing device...")
+		// Cancel the device operation by closing it
+		device.Cancel()
+		return nil, fmt.Errorf("operation cancelled by user")
+	}
+
 	if err != nil {
 		// If assertion failed without credential IDs, suggest browser fallback
 		if len(credentialIDs) == 0 {
