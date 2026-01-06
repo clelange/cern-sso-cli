@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -59,7 +60,7 @@ func (p *WebAuthnProvider) GetPIN() (string, error) {
 	}
 
 	// Priority 3: Interactive prompt
-	fmt.Print("Enter your security key PIN: ")
+	fmt.Fprint(os.Stderr, "Enter your security key PIN: ")
 	var pin string
 	_, err := fmt.Scanln(&pin)
 	if err != nil {
@@ -100,7 +101,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	devicePath := p.DevicePath
 	if devicePath == "" {
 		devicePath = locs[0].Path
-		fmt.Printf("Using FIDO2 device: %s\n", locs[0].Product)
+		fmt.Fprintf(os.Stderr, "Using FIDO2 device: %s\n", locs[0].Product)
 	}
 
 	device, err := libfido2.NewDevice(devicePath)
@@ -146,7 +147,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 				// Try standard base64 as last resort
 				credID, err = base64.StdEncoding.DecodeString(credIDStr)
 				if err != nil {
-					fmt.Printf("Warning: Could not decode credential ID: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Warning: Could not decode credential ID: %v\n", err)
 					continue
 				}
 			}
@@ -163,7 +164,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		}
 	}
 
-	fmt.Println("Touch your security key...")
+	fmt.Fprintln(os.Stderr, "Touch your security key...")
 
 	// Run assertion in goroutine to allow signal handling
 	type assertionResult struct {
@@ -187,7 +188,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 
 	// Wait for assertion or interrupt signal
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
 	var assertion *libfido2.Assertion
@@ -196,7 +197,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		assertion = result.assertion
 		err = result.err
 	case <-sigChan:
-		fmt.Println("\nInterrupted. Closing device...")
+		fmt.Fprintln(os.Stderr, "\nInterrupted. Closing device...")
 		// Cancel the device operation by closing it
 		device.Cancel()
 		return nil, fmt.Errorf("operation cancelled by user")
