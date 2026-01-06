@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/clelange/cern-sso-cli/compare/v0.22.0...v0.22.1) (2026-01-06)
+
+
+### Bug Fixes
+
+* **webauthn:** redirect user messages to stderr and add SIGTERM handling ([a1f4c81](https://github.com/clelange/cern-sso-cli/commit/a1f4c81585183d158ebccf50afaed969d7293929))
+
 ## [0.22.0](https://github.com/clelange/cern-sso-cli/compare/v0.21.0...v0.22.0) (2026-01-06)
 
 
