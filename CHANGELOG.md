@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/clelange/cern-sso-cli/compare/v0.22.1...v0.23.0) (2026-01-08)
+
+
+### Features
+
+* add self-update command ([0c4f5b2](https://github.com/clelange/cern-sso-cli/commit/0c4f5b2146003aa8e0fabdbc42c6200cbfcbe843))
+
 ## [0.22.1](https://github.com/clelange/cern-sso-cli/compare/v0.22.0...v0.22.1) (2026-01-06)
 
 
