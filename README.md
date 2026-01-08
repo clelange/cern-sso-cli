@@ -230,6 +230,24 @@ If your account supports WebAuthn, it may prompt you to touch your key.
 | `--auth-host` | Authentication hostname for verification (default "auth.cern.ch"). |
 | `--insecure`, `-k` | Skip certificate validation when verifying. |
 
+### Update Command
+
+| Flag | Description |
+| ---- | ----------- |
+| `--check` | Only check for updates, don't install. |
+
+Check for and install updates:
+
+```bash
+# Check for updates without installing
+cern-sso-cli update --check
+
+# Download and install the latest version
+cern-sso-cli update
+```
+
+**Note**: If installed via Homebrew, the command will suggest using `brew upgrade` instead.
+
 ## Container Support
 
 Run via Docker:
