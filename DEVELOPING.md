@@ -51,15 +51,7 @@ make build-all-webauthn
 
 Binaries will be placed in the `dist/` directory with names like `cern-sso-cli-linux-amd64`.
 
-Build WebAuthn-enabled binaries (platform-specific builds):
 
-```bash
-# Must be built on target platform
-make build-darwin-amd64-webauthn     # macOS Intel (requires macOS + libfido2)
-make build-darwin-arm64-webauthn     # macOS Apple Silicon (requires macOS + libfido2)
-make build-linux-amd64-webauthn      # Linux AMD64 (requires libfido2-dev)
-make build-linux-arm64-webauthn      # Linux ARM64 (requires libfido2-dev)
-```
 
 **Note**: WebAuthn builds for Linux ARM64 and macOS Intel are available for manual builds but not included in releases due to CI limitations.
 
@@ -84,8 +76,8 @@ Multi-architecture container images (amd64/arm64) are available from GitHub Cont
 Run integration tests (requires CERN credentials and network access):
 
 ```bash
-export KRB_USERNAME='your-username'
-export KRB_PASSWORD='your-password'
+export KRB5_USERNAME='your-username'
+export KRB5_PASSWORD='your-password'
 make test-integration
 ```
 

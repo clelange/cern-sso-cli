@@ -42,6 +42,9 @@ jobs:
   integration-ccache:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
+      KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
     - uses: actions/checkout@v6
 
@@ -86,25 +89,19 @@ jobs:
         EOF
 
     - name: Get Kerberos ticket via kinit
-      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
-      env:
-        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
-        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      if: env.KRB5_USERNAME != '' && env.KRB5_PASSWORD != ''
       run: |
-        echo "$KRB_PASSWORD" | kinit "${KRB_USERNAME}@CERN.CH"
+        echo "$KRB5_PASSWORD" | kinit "${KRB5_USERNAME}@CERN.CH"
         klist
 
     - name: Build
       run: make build
 
     - name: Test with credential cache (no password env vars)
-      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
-      env:
-        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
-        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      if: env.KRB5_USERNAME != '' && env.KRB5_PASSWORD != ''
       run: |
         # Unset password env vars to ensure we use ccache
-        unset KRB_USERNAME KRB_PASSWORD
+        unset KRB5_USERNAME KRB5_PASSWORD
         
         # Test cookie command with ccache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
@@ -122,6 +119,9 @@ jobs:
   integration-password:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
+      KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
     - uses: actions/checkout@v6
 
@@ -143,11 +143,78 @@ jobs:
       run: make download-certs
 
     - name: Run Integration Tests
-      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
-      env:
-        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
-        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      if: env.KRB5_USERNAME != '' && env.KRB5_PASSWORD != ''
       run: make test-integration
+
+  # Integration tests using keytab (from cern-get-keytab)
+  integration-keytab:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      KRB5_KEYTAB: ${{ secrets.KRB5_KEYTAB }}
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+        cache: true
+
+    - name: Install Kerberos and libfido2
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y krb5-user libfido2-dev
+
+    - name: Configure Kerberos
+      run: |
+        sudo tee /etc/krb5.conf << 'EOF'
+        [libdefaults]
+            default_realm = CERN.CH
+            dns_lookup_kdc = true
+        [realms]
+            CERN.CH = { kdc = cerndc.cern.ch }
+        [domain_realm]
+            .cern.ch = CERN.CH
+        EOF
+
+    - name: Download CERN CA certificates
+      run: make download-certs
+
+    - name: Build
+      run: make build
+
+    - name: Decode keytab from secret
+      if: env.KRB5_KEYTAB != ''
+      run: |
+        echo "${KRB5_KEYTAB}" | base64 -d > /tmp/test.keytab
+        chmod 600 /tmp/test.keytab
+        echo "=== Keytab contents ==="
+        klist -kt /tmp/test.keytab
+
+    - name: Test --keytab flag
+      if: env.KRB5_KEYTAB != ''
+      run: |
+        ./cern-sso-cli cookie --url https://gitlab.cern.ch --keytab /tmp/test.keytab --file test_cookies.txt
+        if [ ! -f test_cookies.txt ]; then
+          echo "ERROR: Cookie file not created with --keytab"
+          exit 1
+        fi
+        echo "SUCCESS: --keytab authentication works!"
+        cat test_cookies.txt
+
+    - name: Test --use-keytab with KRB5_KTNAME
+      if: env.KRB5_KEYTAB != ''
+      env:
+        KRB5_KTNAME: /tmp/test.keytab
+      run: |
+        rm -f test_cookies.txt
+        ./cern-sso-cli cookie --url https://gitlab.cern.ch --use-keytab --file test_cookies.txt
+        if [ ! -f test_cookies.txt ]; then
+          echo "ERROR: Cookie file not created with --use-keytab"
+          exit 1
+        fi
+        echo "SUCCESS: --use-keytab with KRB5_KTNAME works!"
 
   # Unit tests on macOS
   test-macos:
@@ -171,6 +238,9 @@ jobs:
   integration-macos:
     runs-on: macos-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
+      KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
     - uses: actions/checkout@v6
 
@@ -214,13 +284,10 @@ jobs:
         EOF
 
     - name: Get Kerberos ticket (file-based cache for CI)
-      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
-      env:
-        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
-        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
+      if: env.KRB5_USERNAME != '' && env.KRB5_PASSWORD != ''
       run: |
         # Create file-based cache (keychain not available in CI)
-        echo "$KRB_PASSWORD" | kinit -c /tmp/krb5cc_ci "${KRB_USERNAME}@CERN.CH"
+        echo "$KRB5_PASSWORD" | kinit -c /tmp/krb5cc_ci "${KRB5_USERNAME}@CERN.CH"
         export KRB5CCNAME=/tmp/krb5cc_ci
         echo "=== Kerberos ticket (file-based cache) ==="
         klist
@@ -229,14 +296,12 @@ jobs:
       run: make build
 
     - name: Test with file-based cache
-      if: env.KRB_USERNAME != '' && env.KRB_PASSWORD != ''
+      if: env.KRB5_USERNAME != '' && env.KRB5_PASSWORD != ''
       env:
-        KRB_USERNAME: ${{ secrets.KRB_USERNAME }}
-        KRB_PASSWORD: ${{ secrets.KRB_PASSWORD }}
         KRB5CCNAME: /tmp/krb5cc_ci
       run: |
         # Unset password env vars to ensure we use ccache
-        unset KRB_USERNAME KRB_PASSWORD
+        unset KRB5_USERNAME KRB5_PASSWORD
 
         # Run with file-based cache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt

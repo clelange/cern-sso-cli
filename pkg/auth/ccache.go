@@ -27,9 +27,10 @@ func NormalizePrincipal(username string) string {
 	if !strings.Contains(username, "@") {
 		username = username + "@CERN.CH"
 	}
-	if strings.HasSuffix(strings.ToLower(username), "@cern.ch") {
-		parts := strings.Split(username, "@")
-		username = parts[0] + "@CERN.CH"
+	suffix := "@cern.ch"
+	lower := strings.ToLower(username)
+	if strings.HasSuffix(lower, suffix) {
+		username = username[:len(username)-len(suffix)] + "@CERN.CH"
 	}
 	return username
 }

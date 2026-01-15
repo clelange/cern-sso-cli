@@ -54,9 +54,13 @@ func runToken(cmd *cobra.Command, args []string) error {
 	if err := ValidateMethodFlags(); err != nil {
 		return err
 	}
+	if err := ValidateAuthMethodFlags(); err != nil {
+		return err
+	}
 
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !tokenInsecure)
+	authConfig := GetAuthConfig()
+	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !tokenInsecure, authConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Kerberos: %w", err)
 	}

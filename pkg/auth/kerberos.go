@@ -9,6 +9,8 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/user"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config"
+	"github.com/jcmturner/gokrb5/v8/keytab"
 	"github.com/jcmturner/gokrb5/v8/spnego"
 	"golang.org/x/net/publicsuffix"
 )
@@ -48,6 +51,91 @@ const (
 	Krb5ConfigEmbedded = "embedded"
 	Krb5ConfigSystem   = "system"
 )
+
+// AuthConfig holds authentication method configuration.
+type AuthConfig struct {
+	KeytabPath    string // Explicit keytab path from --keytab flag
+	ForcePassword bool   // --use-password flag
+	ForceKeytab   bool   // --use-keytab flag (or implied by --keytab)
+	ForceCCache   bool   // --use-ccache flag
+	Quiet         bool   // --quiet flag (suppress non-error output)
+}
+
+// tryKeytabAuth attempts keytab-based Kerberos authentication.
+// If username is empty, uses the first principal from the keytab.
+func tryKeytabAuth(cfg *config.Config, keytabPath, username string, quiet bool) (*client.Client, string, error) {
+	kt, err := keytab.Load(keytabPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load keytab from %s: %w", keytabPath, err)
+	}
+
+	principal := username
+	if principal == "" {
+		entries := kt.Entries
+		if len(entries) == 0 {
+			return nil, "", fmt.Errorf("keytab contains no entries")
+		}
+		// Use first principal from keytab
+		// Principal has Components ([]string) and Realm fields
+		components := entries[0].Principal.Components
+		realm := entries[0].Principal.Realm
+		if len(components) > 0 {
+			principal = strings.Join(components, "/")
+			if realm != "" {
+				principal = principal + "@" + realm
+			}
+		}
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "Using principal %s from keytab %s\n", principal, keytabPath)
+		}
+	}
+
+	if principal == "" {
+		return nil, "", fmt.Errorf("could not determine principal from keytab")
+	}
+
+	// Strip @REALM suffix for the client
+	shortUsername := principal
+	if idx := strings.Index(principal, "@"); idx != -1 {
+		shortUsername = principal[:idx]
+	}
+
+	cl := client.NewWithKeytab(shortUsername, "CERN.CH", kt, cfg, client.DisablePAFXFAST(true))
+	if err := cl.Login(); err != nil {
+		return nil, "", fmt.Errorf("keytab login failed for %s: %w", principal, err)
+	}
+
+	return cl, NormalizePrincipal(principal), nil
+}
+
+// findKeytabPath returns the keytab path from environment or default locations.
+func findKeytabPath() string {
+	// Check KRB5_KTNAME environment variable
+	if envPath := os.Getenv("KRB5_KTNAME"); envPath != "" {
+		path := envPath
+		if strings.HasPrefix(envPath, "FILE:") {
+			path = strings.TrimPrefix(envPath, "FILE:")
+		}
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// Check user home directory
+	if usr, err := user.Current(); err == nil {
+		userKeytab := filepath.Join(usr.HomeDir, ".keytab")
+		if _, err := os.Stat(userKeytab); err == nil {
+			return userKeytab
+		}
+	}
+
+	// Check system default
+	if _, err := os.Stat("/etc/krb5.keytab"); err == nil {
+		return "/etc/krb5.keytab"
+	}
+
+	return ""
+}
 
 // LoadKrb5Config loads Kerberos configuration from the specified source.
 // source can be:
@@ -112,14 +200,18 @@ type KerberosClient struct {
 	preferredMethod  string            // Preferred 2FA method: "otp", "webauthn", or "" (use default)
 }
 
-// NewKerberosClient creates a new Kerberos client.
-// It first attempts to use an existing credential cache (ccache), which works
-// on Linux and macOS with file-based caches. If no valid ccache is found,
-// it falls back to username/password authentication using KRB_USERNAME and
-// KRB_PASSWORD environment variables.
+// NewKerberosClient creates a new Kerberos client with automatic authentication.
+// This is a convenience wrapper that uses automatic authentication method selection.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
 func NewKerberosClient(version string, krb5ConfigSource string, verifyCert bool) (*KerberosClient, error) {
-	return NewKerberosClientWithUser(version, krb5ConfigSource, "", verifyCert)
+	return NewKerberosClientWithConfig(version, krb5ConfigSource, "", verifyCert, AuthConfig{})
+}
+
+// NewKerberosClientWithUser creates a new Kerberos client for a specific user.
+// This is a convenience wrapper that uses automatic authentication method selection.
+// krb5ConfigSource can be "embedded" (default), "system", or a file path.
+func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string, verifyCert bool) (*KerberosClient, error) {
+	return NewKerberosClientWithConfig(version, krb5ConfigSource, krbUsername, verifyCert, AuthConfig{})
 }
 
 // tryPasswordAuth attempts password-based Kerberos authentication.
@@ -191,62 +283,158 @@ func tryDefaultCacheAuth(cfg *config.Config) (*client.Client, string, error) {
 	return nil, "", fmt.Errorf("no credential cache available")
 }
 
-// NewKerberosClientWithUser creates a new Kerberos client, optionally for a specific user.
-// If krbUsername is provided, it will search for a matching CERN.CH credential cache
-// and use that instead of the default cache. The username can be with or without
-// the @CERN.CH suffix (e.g., "clange" or "clange@CERN.CH").
-// If no matching cache is found but KRB_PASSWORD is set, password-based auth is used.
-// krb5ConfigSource can be "embedded" (default), "system", or a file path.
-func NewKerberosClientWithUser(version string, krb5ConfigSource string, krbUsername string, verifyCert bool) (*KerberosClient, error) {
+// NewKerberosClientWithConfig creates a new Kerberos client with full configuration.
+// This function supports explicit authentication method selection via AuthConfig,
+// and automatic method selection when no explicit method is specified.
+//
+// Authentication priority (when no explicit method is specified):
+//  1. Password (if KRB5_USERNAME and KRB5_PASSWORD are set)
+//  2. Keytab (if KRB5_KTNAME is set)
+//  3. Credential cache (ccache)
+//  4. Default keytab locations (~/.keytab, /etc/krb5.keytab)
+func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUsername string,
+	verifyCert bool, authConfig AuthConfig) (*KerberosClient, error) {
+
 	cfg, err := LoadKrb5Config(krb5ConfigSource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load krb5 config: %w", err)
 	}
 
-	// Strategy 1: Specific user requested - try user cache, then password auth
+	// ═══════════════════════════════════════════════════════════════
+	// EXPLICIT METHOD SELECTION (--use-* flags)
+	// ═══════════════════════════════════════════════════════════════
+
+	if authConfig.ForcePassword {
+		username := os.Getenv("KRB5_USERNAME")
+		password := os.Getenv("KRB5_PASSWORD")
+		if krbUsername != "" {
+			// Warn if --user differs from KRB5_USERNAME
+			if username != "" && username != krbUsername && !strings.EqualFold(NormalizePrincipal(username), NormalizePrincipal(krbUsername)) {
+				if !authConfig.Quiet {
+					fmt.Fprintf(os.Stderr, "Warning: --user (%s) differs from KRB5_USERNAME (%s), using --user\n", krbUsername, username)
+				}
+			}
+			username = krbUsername
+		}
+		if username == "" || password == "" {
+			return nil, fmt.Errorf("--use-password requires KRB5_USERNAME and KRB5_PASSWORD environment variables")
+		}
+		cl, err := tryPasswordAuth(cfg, username, password)
+		if err != nil {
+			return nil, err
+		}
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, NormalizePrincipal(username))
+	}
+
+	if authConfig.ForceKeytab {
+		ktPath := authConfig.KeytabPath
+		if ktPath == "" {
+			ktPath = findKeytabPath()
+		}
+		if ktPath == "" {
+			return nil, fmt.Errorf("--use-keytab specified but no keytab found (use --keytab, KRB5_KTNAME, or ~/.keytab)")
+		}
+		cl, principal, err := tryKeytabAuth(cfg, ktPath, krbUsername, authConfig.Quiet)
+		if err != nil {
+			return nil, err
+		}
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+	}
+
+	if authConfig.ForceCCache {
+		if krbUsername != "" {
+			if cl, principal, err := tryUserCacheAuth(cfg, krbUsername); err == nil {
+				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+			}
+		}
+		if cl, principal, err := tryDefaultCacheAuth(cfg); err == nil {
+			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+		}
+		return nil, fmt.Errorf("--use-ccache specified but no valid credential cache found")
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// AUTOMATIC MODE (no --use-* flags)
+	// ═══════════════════════════════════════════════════════════════
+
+	username := os.Getenv("KRB5_USERNAME")
+	password := os.Getenv("KRB5_PASSWORD")
 	if krbUsername != "" {
-		// Try macOS user-specific cache
+		// Warn if --user differs from KRB5_USERNAME when both are set
+		if username != "" && password != "" && !strings.EqualFold(NormalizePrincipal(username), NormalizePrincipal(krbUsername)) {
+			if !authConfig.Quiet {
+				fmt.Fprintf(os.Stderr, "Warning: --user (%s) differs from KRB5_USERNAME (%s), using --user for authentication\n", krbUsername, username)
+			}
+		}
+		username = krbUsername
+	}
+
+	// Priority 1: Password (if credentials are set)
+	if username != "" && password != "" {
+		cl, err := tryPasswordAuth(cfg, username, password)
+		if err != nil {
+			return nil, err
+		}
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, NormalizePrincipal(username))
+	}
+
+	// Priority 2: Keytab via KRB5_KTNAME
+	if envPath := os.Getenv("KRB5_KTNAME"); envPath != "" {
+		path := envPath
+		if strings.HasPrefix(envPath, "FILE:") {
+			path = strings.TrimPrefix(envPath, "FILE:")
+		}
+		if _, statErr := os.Stat(path); statErr == nil {
+			cl, principal, err := tryKeytabAuth(cfg, path, username, authConfig.Quiet)
+			if err != nil {
+				return nil, fmt.Errorf("authentication failed with KRB5_KTNAME=%s: %w", envPath, err)
+			}
+			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+		}
+	}
+
+	// Priority 3: Credential cache
+	if krbUsername != "" {
 		if cl, principal, err := tryUserCacheAuth(cfg, krbUsername); err == nil {
 			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
 		}
+	}
+	if cl, principal, err := tryDefaultCacheAuth(cfg); err == nil {
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+	}
 
-		// Try password auth with provided username
-		if password := os.Getenv("KRB_PASSWORD"); password != "" {
-			cl, err := tryPasswordAuth(cfg, krbUsername, password)
-			if err != nil {
-				return nil, err
+	// Priority 4: Default keytab locations
+	if usr, err := user.Current(); err == nil {
+		userKeytab := filepath.Join(usr.HomeDir, ".keytab")
+		if _, statErr := os.Stat(userKeytab); statErr == nil {
+			if cl, principal, err := tryKeytabAuth(cfg, userKeytab, username, authConfig.Quiet); err == nil {
+				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+			} else {
+				if !authConfig.Quiet {
+					fmt.Fprintf(os.Stderr, "Warning: found keytab at %s but authentication failed: %v\n", userKeytab, err)
+				}
 			}
-			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, NormalizePrincipal(krbUsername))
 		}
-
-		// No cache and no password
-		return nil, fmt.Errorf("no cache found for %s and KRB_PASSWORD not set", krbUsername)
 	}
-
-	// Strategy 2: No user specified - try default cache
-	if cl, username, err := tryDefaultCacheAuth(cfg); err == nil {
-		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, username)
-	}
-
-	// Strategy 3: Fall back to environment credentials
-	username := os.Getenv("KRB_USERNAME")
-	password := os.Getenv("KRB_PASSWORD")
-
-	if username == "" || password == "" {
-		if IsMacOSAPICCache() {
-			return nil, fmt.Errorf("no credential cache available. On macOS, either:\n" +
-				"  1. Set up keychain: kinit --keychain your-username@CERN.CH (one-time setup)\n" +
-				"  2. Create file cache: kinit -c /tmp/krb5cc_custom && export KRB5CCNAME=/tmp/krb5cc_custom\n" +
-				"  3. Set KRB_USERNAME and KRB_PASSWORD environment variables")
+	if _, statErr := os.Stat("/etc/krb5.keytab"); statErr == nil {
+		if cl, principal, err := tryKeytabAuth(cfg, "/etc/krb5.keytab", username, authConfig.Quiet); err == nil {
+			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+		} else {
+			if !authConfig.Quiet {
+				fmt.Fprintf(os.Stderr, "Warning: found keytab at /etc/krb5.keytab but authentication failed: %v\n", err)
+			}
 		}
-		return nil, fmt.Errorf("no credential cache found and KRB_USERNAME/KRB_PASSWORD not set")
 	}
 
-	cl, err := tryPasswordAuth(cfg, username, password)
-	if err != nil {
-		return nil, err
+	// No method available
+	if IsMacOSAPICCache() {
+		return nil, fmt.Errorf("no authentication method available. Options:\n" +
+			"  1. kinit --keychain your-username@CERN.CH (one-time keychain setup)\n" +
+			"  2. --keytab ~/.keytab (use a keytab file)\n" +
+			"  3. export KRB5_KTNAME=~/.keytab (keytab via environment)\n" +
+			"  4. export KRB5_USERNAME=... KRB5_PASSWORD=... (credentials)")
 	}
-	return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, NormalizePrincipal(username))
+	return nil, fmt.Errorf("no authentication method available (no credentials, keytab, or ccache)")
 }
 
 // extractUsernameFromClient extracts the principal name from the Kerberos client.

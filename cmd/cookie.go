@@ -58,6 +58,9 @@ func runCookie(cmd *cobra.Command, args []string) error {
 	if err := ValidateMethodFlags(); err != nil {
 		return err
 	}
+	if err := ValidateAuthMethodFlags(); err != nil {
+		return err
+	}
 
 	// Extract domain from target URL for cookie matching
 	u, err := url.Parse(cookieURL)
@@ -142,7 +145,8 @@ func runCookie(cmd *cobra.Command, args []string) error {
 
 // tryAuthCookies attempts to authenticate using existing auth cookies.
 func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure bool) (bool, *auth.LoginResult, *auth.KerberosClient) {
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
+	authConfig := GetAuthConfig()
+	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !insecure, authConfig)
 	if err != nil {
 		logInfo("Warning: Failed to create Kerberos client for cookie attempt: %v\n", err)
 		return false, nil, nil
@@ -216,7 +220,8 @@ func printCookieOutput(output *CookieOutput) {
 // authenticateWithKerberos performs full Kerberos authentication flow.
 func authenticateWithKerberos(targetURL, filename, authHost string, insecure bool) error {
 	logPrintln("Initializing Kerberos client...")
-	kerbClient, err := auth.NewKerberosClientWithUser(version, krb5Config, krbUser, !insecure)
+	authConfig := GetAuthConfig()
+	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !insecure, authConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Kerberos: %w", err)
 	}

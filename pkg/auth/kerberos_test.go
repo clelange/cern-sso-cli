@@ -97,10 +97,10 @@ func TestLoadKrb5Config_System(t *testing.T) {
 
 func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
@@ -118,10 +118,10 @@ func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 
 func TestTryLoginWithCookies_InvalidRedirect(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
@@ -146,10 +146,10 @@ func TestTryLoginWithCookies_InvalidRedirect(t *testing.T) {
 
 func TestTryLoginWithCookies_Success(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
@@ -182,10 +182,10 @@ func loadTestKrb5Config() (*config.Config, error) {
 
 func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
@@ -242,10 +242,10 @@ func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 
 func TestTryLoginWithCookies_DomainFixing(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
