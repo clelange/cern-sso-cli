@@ -30,10 +30,10 @@ func TestNewKerberosClientWithInsecureCert(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("KRB_USERNAME", "test")
-			os.Setenv("KRB_PASSWORD", "test")
-			defer os.Unsetenv("KRB_USERNAME")
-			defer os.Unsetenv("KRB_PASSWORD")
+			os.Setenv("KRB5_USERNAME", "test")
+			os.Setenv("KRB5_PASSWORD", "test")
+			defer os.Unsetenv("KRB5_USERNAME")
+			defer os.Unsetenv("KRB5_PASSWORD")
 
 			cfg, _ := loadTestKrb5Config()
 			cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
@@ -72,10 +72,10 @@ func TestNewKerberosClientWithInsecureCert(t *testing.T) {
 // TestLoginWithKerberosWithInsecureCert verifies that LoginWithKerberos respects
 // the verifyCert parameter when making HTTP requests
 func TestLoginWithKerberosWithInsecureCert(t *testing.T) {
-	os.Setenv("KRB_USERNAME", "test")
-	os.Setenv("KRB_PASSWORD", "test")
-	defer os.Unsetenv("KRB_USERNAME")
-	defer os.Unsetenv("KRB_PASSWORD")
+	os.Setenv("KRB5_USERNAME", "test")
+	os.Setenv("KRB5_PASSWORD", "test")
+	defer os.Unsetenv("KRB5_USERNAME")
+	defer os.Unsetenv("KRB5_PASSWORD")
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))

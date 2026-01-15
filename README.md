@@ -151,20 +151,73 @@ cern-sso-cli device --client-id my-client-id
 
 ## Advanced Authentication
 
+### Authentication Methods
+
+By default, the tool automatically selects an authentication method in this order:
+1. **Password** - if `KRB5_USERNAME` and `KRB5_PASSWORD` are set
+2. **Keytab** - if `KRB5_KTNAME` is set (fails immediately if invalid)
+3. **Credential cache** - if you have an existing Kerberos ticket
+4. **Default keytab** - `~/.keytab` or `/etc/krb5.keytab`
+
+You can force a specific method using flags:
+
+```bash
+# Force password authentication
+cern-sso-cli cookie --url ... --use-password
+
+# Force keytab (uses KRB5_KTNAME or default locations)
+cern-sso-cli cookie --url ... --use-keytab
+
+# Force keytab with explicit path
+cern-sso-cli cookie --url ... --keytab ~/.keytab
+
+# Force credential cache
+cern-sso-cli cookie --url ... --use-ccache
+```
+
+When a `--use-*` flag is specified, the command fails immediately if that method cannot be used.
+
 ### Kerberos Integration (Automatic)
-The tool prefers existing Kerberos tickets.
+The tool prefers existing Kerberos tickets when no credentials or keytab are configured.
 
 *   **Linux**: Detects `/tmp/krb5cc_...` automatically.
 *   **macOS**: Detects API-based system cache. If needed, it may ask you to run `kinit --keychain youruser@CERN.CH` once to synchronise.
 
 ### Environment Variables (CI/CD)
-If you don't have a Kerberos ticket, you can pass credentials:
+If you don't have a Kerberos ticket or keytab, you can pass credentials:
 
 ```bash
-export KRB_USERNAME="myuser"
-export KRB_PASSWORD="mypassword"
+export KRB5_USERNAME="myuser"
+export KRB5_PASSWORD="mypassword"
 cern-sso-cli cookie --url ...
 ```
+
+### Keytab Authentication
+
+For automated environments or when you prefer not to store passwords:
+
+```bash
+# Using CLI flag (highest priority)
+cern-sso-cli cookie --url https://gitlab.cern.ch --keytab ~/.keytab
+
+# Using environment variable
+export KRB5_KTNAME=~/.keytab
+cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+**Creating a keytab at CERN:**
+
+> **Note**: CERN's Active Directory requires keytabs to be registered with the KDC.
+> You cannot create a working keytab by simply deriving a key from your password
+> (e.g., using `ktutil`). Instead, use the CERN-provided `cern-get-keytab` tool.
+
+```bash
+# On a CERN Linux machine
+cern-get-keytab --user --login youruser --keytab ~/.keytab
+```
+
+For more information, see [Generating a user keytab at CERN](https://cern.service-now.com/service-portal?id=kb_article&n=KB0003405).
+
 
 ### WebAuthn (FIDO2 / YubiKey)
 If your account supports WebAuthn, it may prompt you to touch your key.
@@ -180,6 +233,10 @@ If your account supports WebAuthn, it may prompt you to touch your key.
 | `--quiet`, `-q` | Suppress output (exit 0 = success). |
 | `--user`, `-u` | Specify username (e.g. `--user alice`). |
 | `--krb5-config` | Kerberos config source: `embedded` (default), `system`, or file path. |
+| `--keytab` | Path to keytab file (implies --use-keytab). |
+| `--use-password` | Force password authentication. |
+| `--use-keytab` | Force keytab authentication. |
+| `--use-ccache` | Force credential cache authentication. |
 | `--otp` | Provide OTP code directly (e.g. `--otp 123456`). |
 | `--otp-command` | Command to fetch OTP (e.g. 1Password CLI). |
 | `--otp-retries` | Max OTP retry attempts (default 3). |

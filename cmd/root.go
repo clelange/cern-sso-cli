@@ -31,6 +31,11 @@ var (
 	// 2FA method preference flags
 	useOTP      bool
 	useWebAuthn bool
+	// Authentication method flags
+	keytabPath  string
+	usePassword bool
+	useKeytab   bool
+	useCCache   bool
 )
 
 // version is set from main.go
@@ -82,6 +87,11 @@ func init() {
 	// 2FA method preference flags
 	rootCmd.PersistentFlags().BoolVar(&useOTP, "use-otp", false, "Use OTP (authenticator app) for 2FA, even if WebAuthn is the default")
 	rootCmd.PersistentFlags().BoolVar(&useWebAuthn, "use-webauthn", false, "Use WebAuthn (security key) for 2FA, even if OTP is the default")
+	// Authentication method flags
+	rootCmd.PersistentFlags().StringVar(&keytabPath, "keytab", "", "Path to keytab file (implies --use-keytab)")
+	rootCmd.PersistentFlags().BoolVar(&usePassword, "use-password", false, "Force password authentication (requires KRB5_USERNAME and KRB5_PASSWORD)")
+	rootCmd.PersistentFlags().BoolVar(&useKeytab, "use-keytab", false, "Force keytab authentication (uses --keytab, KRB5_KTNAME, or default locations)")
+	rootCmd.PersistentFlags().BoolVar(&useCCache, "use-ccache", false, "Force credential cache authentication")
 }
 
 // logInfo prints a formatted message if not in quiet mode.
@@ -159,4 +169,41 @@ func ValidateMethodFlags() error {
 		return fmt.Errorf("--use-otp and --use-webauthn are mutually exclusive")
 	}
 	return nil
+}
+
+// ValidateAuthMethodFlags checks that authentication method flags are mutually exclusive.
+// It also handles the implication that --keytab implies --use-keytab.
+func ValidateAuthMethodFlags() error {
+	// --keytab implies --use-keytab
+	if keytabPath != "" {
+		useKeytab = true
+	}
+
+	// Count how many --use-* auth flags are set
+	count := 0
+	if usePassword {
+		count++
+	}
+	if useKeytab {
+		count++
+	}
+	if useCCache {
+		count++
+	}
+
+	if count > 1 {
+		return fmt.Errorf("--use-password, --use-keytab, and --use-ccache are mutually exclusive")
+	}
+	return nil
+}
+
+// GetAuthConfig returns the authentication configuration from CLI flags.
+func GetAuthConfig() auth.AuthConfig {
+	return auth.AuthConfig{
+		KeytabPath:    keytabPath,
+		ForcePassword: usePassword,
+		ForceKeytab:   useKeytab,
+		ForceCCache:   useCCache,
+		Quiet:         quiet,
+	}
 }

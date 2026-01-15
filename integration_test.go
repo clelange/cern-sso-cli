@@ -3,7 +3,7 @@
 
 // Package main provides integration tests for the CERN SSO authentication tool.
 // These tests require:
-// - KRB_USERNAME and KRB_PASSWORD environment variables set
+// - KRB5_USERNAME and KRB5_PASSWORD environment variables set
 // - Network access to CERN Kerberos and SSO endpoints
 //
 // Run with: go test -tags=integration -v ./...
@@ -324,24 +324,24 @@ func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 
 func TestIntegration_InvalidCredentials(t *testing.T) {
 	// Set wrong password and dummy username to force password-based auth
-	originalUser := os.Getenv("KRB_USERNAME")
-	originalPassword := os.Getenv("KRB_PASSWORD")
+	originalUser := os.Getenv("KRB5_USERNAME")
+	originalPassword := os.Getenv("KRB5_PASSWORD")
 	originalCCache := os.Getenv("KRB5CCNAME")
 
-	os.Setenv("KRB_USERNAME", "testuser")
-	os.Setenv("KRB_PASSWORD", "wrong-password")
+	os.Setenv("KRB5_USERNAME", "testuser")
+	os.Setenv("KRB5_PASSWORD", "wrong-password")
 	os.Setenv("KRB5CCNAME", "/tmp/non-existent-ccache-path")
 
 	defer func() {
 		if originalUser != "" {
-			os.Setenv("KRB_USERNAME", originalUser)
+			os.Setenv("KRB5_USERNAME", originalUser)
 		} else {
-			os.Unsetenv("KRB_USERNAME")
+			os.Unsetenv("KRB5_USERNAME")
 		}
 		if originalPassword != "" {
-			os.Setenv("KRB_PASSWORD", originalPassword)
+			os.Setenv("KRB5_PASSWORD", originalPassword)
 		} else {
-			os.Unsetenv("KRB_PASSWORD")
+			os.Unsetenv("KRB5_PASSWORD")
 		}
 		if originalCCache != "" {
 			os.Setenv("KRB5CCNAME", originalCCache)
@@ -361,8 +361,8 @@ func TestIntegration_InvalidCredentials(t *testing.T) {
 }
 
 func skipIfNoCredentials(t *testing.T) {
-	if os.Getenv("KRB_USERNAME") == "" || os.Getenv("KRB_PASSWORD") == "" {
-		t.Skip("Skipping integration test: KRB_USERNAME and KRB_PASSWORD not set")
+	if os.Getenv("KRB5_USERNAME") == "" || os.Getenv("KRB5_PASSWORD") == "" {
+		t.Skip("Skipping integration test: KRB5_USERNAME and KRB5_PASSWORD not set")
 	}
 }
 
