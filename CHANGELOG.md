@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/clelange/cern-sso-cli/compare/v0.23.0...v0.24.0) (2026-01-15)
+
+
+### Features
+
+* **auth:** add keytab support and improve kerberos auth ([78e913c](https://github.com/clelange/cern-sso-cli/commit/78e913cacd873a1dcfd72ac7cd4eed69ac3171b6)), closes [#71](https://github.com/clelange/cern-sso-cli/issues/71)
+
 ## [0.23.0](https://github.com/clelange/cern-sso-cli/compare/v0.22.1...v0.23.0) (2026-01-08)
 
 
