@@ -127,13 +127,36 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 	}
 
 	// Wait for the page to fully load and cookies to be set
+	// Need to wait longer for OIDC flows which have multiple redirects
 	fmt.Fprintln(os.Stderr, "Waiting for page to fully load...")
+
+	// Wait for document.readyState to be 'complete' and some additional time
+	// for any JavaScript-set cookies
 	err = chromedp.Run(browserCtx,
-		// Wait for network idle (no pending requests for 500ms)
-		chromedp.Sleep(2*time.Second),
+		// First, wait for DOMContentLoaded
+		chromedp.WaitReady("body", chromedp.ByQuery),
+		// Then wait additional time for:
+		// 1. Any JavaScript to execute
+		// 2. Any remaining OIDC redirects to complete
+		// 3. Session cookies to be set
+		chromedp.Sleep(3*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed waiting for page load: %w", err)
+	}
+
+	// Check if we ended up on a different URL (OIDC redirect might have happened)
+	var finalURL string
+	if err := chromedp.Run(browserCtx, chromedp.Location(&finalURL)); err == nil {
+		if finalURL != currentURL {
+			// URL changed - wait a bit more for cookies to settle
+			fmt.Fprintln(os.Stderr, "Following final redirects...")
+			err = chromedp.Run(browserCtx, chromedp.Sleep(2*time.Second))
+			if err != nil {
+				return nil, fmt.Errorf("failed waiting for final redirects: %w", err)
+			}
+			currentURL = finalURL
+		}
 	}
 
 	fmt.Fprintln(os.Stderr, "✓ Authentication successful!")
