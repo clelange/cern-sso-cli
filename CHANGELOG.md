@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/clelange/cern-sso-cli/compare/v0.24.0...v0.25.0) (2026-01-16)
+
+
+### Features
+
+* **webauthn:** add device listing and index-based selection ([6756449](https://github.com/clelange/cern-sso-cli/commit/6756449fd8aef20d2da780bbb1ce6b27fb8adab0))
+
+
+### Bug Fixes
+
+* **auth:** ignore env password when username differs ([f927123](https://github.com/clelange/cern-sso-cli/commit/f92712327d2b94eab808695931ffd7982faf7409))
+
 ## [0.24.0](https://github.com/clelange/cern-sso-cli/compare/v0.23.0...v0.24.0) (2026-01-15)
 
 
