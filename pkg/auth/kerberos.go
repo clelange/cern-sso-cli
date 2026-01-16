@@ -361,9 +361,13 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 	password := os.Getenv("KRB5_PASSWORD")
 	if krbUsername != "" {
 		// Warn if --user differs from KRB5_USERNAME when both are set
-		if username != "" && password != "" && !strings.EqualFold(NormalizePrincipal(username), NormalizePrincipal(krbUsername)) {
-			if !authConfig.Quiet {
-				fmt.Fprintf(os.Stderr, "Warning: --user (%s) differs from KRB5_USERNAME (%s), using --user for authentication\n", krbUsername, username)
+		if username != "" && password != "" {
+			if !strings.EqualFold(NormalizePrincipal(username), NormalizePrincipal(krbUsername)) {
+				if !authConfig.Quiet {
+					fmt.Fprintf(os.Stderr, "Warning: --user (%s) differs from KRB5_USERNAME (%s), using --user for authentication\n", krbUsername, username)
+				}
+				// Do not use the environment password if the user differs
+				password = ""
 			}
 		}
 		username = krbUsername
