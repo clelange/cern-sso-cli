@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -73,10 +74,18 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 
 	// Wait for authentication to complete
 	// We consider auth complete when the URL is no longer on the auth hostname
+	// and is back on the target domain
 	err = chromedp.Run(browserCtx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			ticker := time.NewTicker(500 * time.Millisecond)
 			defer ticker.Stop()
+
+			// Parse target URL to get the host
+			targetParsed, err := url.Parse(targetURL)
+			if err != nil {
+				return fmt.Errorf("failed to parse target URL: %w", err)
+			}
+			targetHost := targetParsed.Host
 
 			for {
 				select {
@@ -88,17 +97,23 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 						continue // Ignore transient errors
 					}
 
-					// Check if we've left the auth hostname
+					// Check if we've left the auth hostname AND are on the target host
 					if currentURL != "" && !strings.Contains(currentURL, authHostname) {
-						// Also check we're not on a blank page
-						if !strings.HasPrefix(currentURL, "about:") && !strings.HasPrefix(currentURL, "chrome:") {
-							return nil // Auth complete!
+						// Check we're not on a blank page
+						if strings.HasPrefix(currentURL, "about:") || strings.HasPrefix(currentURL, "chrome:") {
+							continue
 						}
-					}
 
-					// Also check if we're back on the original target (some flows)
-					if strings.HasPrefix(currentURL, targetURL) && !strings.Contains(currentURL, authHostname) {
-						return nil
+						// Check if we're on the target domain
+						currentParsed, err := url.Parse(currentURL)
+						if err != nil {
+							continue
+						}
+
+						if currentParsed.Host == targetHost {
+							// We're on the target domain - wait a bit more for cookies to settle
+							return nil
+						}
 					}
 				}
 			}
@@ -109,6 +124,16 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 			return nil, fmt.Errorf("authentication timed out after %v", timeout)
 		}
 		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	// Wait for the page to fully load and cookies to be set
+	fmt.Fprintln(os.Stderr, "Waiting for page to fully load...")
+	err = chromedp.Run(browserCtx,
+		// Wait for network idle (no pending requests for 500ms)
+		chromedp.Sleep(2*time.Second),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed waiting for page load: %w", err)
 	}
 
 	fmt.Fprintln(os.Stderr, "✓ Authentication successful!")
