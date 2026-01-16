@@ -73,8 +73,9 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 	fmt.Fprintln(os.Stderr, "Waiting for authentication to complete...")
 
 	// Wait for authentication to complete
-	// We consider auth complete when the URL is no longer on the auth hostname
-	// and is back on the target domain
+	// We consider auth complete when:
+	// 1. URL is on the target domain (not auth hostname)
+	// 2. URL has stopped changing (stabilized)
 	err = chromedp.Run(browserCtx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			ticker := time.NewTicker(500 * time.Millisecond)
@@ -87,6 +88,10 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 			}
 			targetHost := targetParsed.Host
 
+			var lastURL string
+			var stableCount int
+			const requiredStableChecks = 6 // 3 seconds of stability at 500ms intervals
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -97,23 +102,43 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 						continue // Ignore transient errors
 					}
 
-					// Check if we've left the auth hostname AND are on the target host
-					if currentURL != "" && !strings.Contains(currentURL, authHostname) {
-						// Check we're not on a blank page
-						if strings.HasPrefix(currentURL, "about:") || strings.HasPrefix(currentURL, "chrome:") {
-							continue
-						}
+					// Check we're not on a blank page
+					if strings.HasPrefix(currentURL, "about:") || strings.HasPrefix(currentURL, "chrome:") {
+						stableCount = 0
+						lastURL = currentURL
+						continue
+					}
 
-						// Check if we're on the target domain
-						currentParsed, err := url.Parse(currentURL)
-						if err != nil {
-							continue
-						}
+					// Check if we've left the auth hostname
+					if strings.Contains(currentURL, authHostname) {
+						stableCount = 0
+						lastURL = currentURL
+						continue
+					}
 
-						if currentParsed.Host == targetHost {
-							// We're on the target domain - wait a bit more for cookies to settle
+					// Check if we're on the target domain
+					currentParsed, err := url.Parse(currentURL)
+					if err != nil {
+						continue
+					}
+
+					if currentParsed.Host != targetHost {
+						stableCount = 0
+						lastURL = currentURL
+						continue
+					}
+
+					// We're on the target domain - check for stability
+					if currentURL == lastURL {
+						stableCount++
+						if stableCount >= requiredStableChecks {
+							// URL has been stable for 3 seconds - auth complete!
 							return nil
 						}
+					} else {
+						// URL changed - reset stability counter
+						stableCount = 1
+						lastURL = currentURL
 					}
 				}
 			}
