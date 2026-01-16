@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
+	"github.com/clelange/cern-sso-cli/pkg/browser"
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config"
 	"github.com/jcmturner/gokrb5/v8/keytab"
@@ -1120,7 +1121,23 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 
 			// Use WebAuthn if available and preferred (or if OTP not available)
 			if webauthnAvailable && (k.preferredMethod == "webauthn" || !otpAvailable) {
-				// Handle WebAuthn flow
+				// Check if browser-based flow is requested
+				if k.webauthnProvider.UseBrowser {
+					// Use Chrome browser for WebAuthn (supports Touch ID)
+					timeout := k.webauthnProvider.GetTimeout()
+					browserResult, err := browser.AuthenticateWithChrome(loginPage, authHostname, timeout)
+					if err != nil {
+						return nil, &LoginError{Message: fmt.Sprintf("browser authentication failed: %v", err)}
+					}
+					// Return the browser result directly
+					return &LoginResult{
+						Cookies:     browserResult.Cookies,
+						RedirectURI: browserResult.FinalURL,
+						Username:    k.username,
+					}, nil
+				}
+
+				// Handle WebAuthn flow with hardware key
 				webauthnForm, err := ParseWebAuthnForm(bytes.NewReader(authBody))
 				if err != nil {
 					return nil, &LoginError{Message: fmt.Sprintf("failed to parse WebAuthn form: %v", err)}
