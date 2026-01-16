@@ -222,9 +222,22 @@ For more information, see [Generating a user keytab at CERN](https://cern.servic
 ### WebAuthn (FIDO2 / YubiKey)
 If your account supports WebAuthn, it may prompt you to touch your key.
 
+**Important**: This tool uses `libfido2`, which only supports USB/NFC security keys (e.g., YubiKey). macOS Touch ID and iCloud Keychain passkeys are **not supported**.
+
+**List available devices:**
+```bash
+cern-sso-cli webauthn list
+```
+
+**Select a specific device by index:**
+```bash
+cern-sso-cli --webauthn-device-index 0 cookie --url https://gitlab.cern.ch
+```
+
 **Flags**:
 *   `--use-webauthn`: Force WebAuthn usage.
 *   `--webauthn-pin 1234`: Provide PIN if required.
+*   `--webauthn-device-index N`: Select device by index (see `webauthn list`).
 
 ## Global Options
 
@@ -243,8 +256,10 @@ If your account supports WebAuthn, it may prompt you to touch your key.
 | `--use-otp` | Use OTP even if WebAuthn is default. |
 | `--use-webauthn` | Use WebAuthn even if OTP is default. |
 | `--webauthn-device` | Path to specific FIDO2 device (auto-detect if empty). |
+| `--webauthn-device-index` | Index of FIDO2 device to use (see `webauthn list`), -1 for auto. |
 | `--webauthn-pin` | PIN for FIDO2 security key (alternative to prompt). |
 | `--webauthn-timeout` | Timeout in seconds for FIDO2 device interaction (default 30). |
+
 
 ## Subcommand Options
 

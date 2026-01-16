@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,10 +32,11 @@ const (
 
 // WebAuthnProvider handles FIDO2 authentication with security keys.
 type WebAuthnProvider struct {
-	DevicePath string        // Optional: specific device path, empty = auto-detect
-	PIN        string        // Device PIN if required
-	Timeout    time.Duration // Timeout for device interaction
-	UseBrowser bool          // Fall back to browser-based flow
+	DevicePath  string        // Optional: specific device path, empty = auto-detect
+	DeviceIndex int           // Optional: device index (0-based), -1 = auto-detect first device
+	PIN         string        // Device PIN if required
+	Timeout     time.Duration // Timeout for device interaction
+	UseBrowser  bool          // Fall back to browser-based flow
 }
 
 // WebAuthnResult contains the response data to submit to Keycloak.
@@ -77,6 +79,42 @@ func (p *WebAuthnProvider) GetTimeout() time.Duration {
 	return p.Timeout
 }
 
+// FIDO2DeviceInfo contains information about an available FIDO2 device.
+type FIDO2DeviceInfo struct {
+	Index   int    // 0-based index for selection
+	Path    string // Device path (e.g., /dev/hidraw0)
+	Product string // Product name (e.g., "YubiKey 5 NFC")
+}
+
+// ListFIDO2Devices returns a list of available FIDO2 devices.
+// Returns an empty slice if no devices are found or if enumeration fails.
+func ListFIDO2Devices() ([]FIDO2DeviceInfo, error) {
+	locs, err := libfido2.DeviceLocations()
+	if err != nil {
+		return nil, fmt.Errorf("failed to enumerate FIDO2 devices: %w", err)
+	}
+
+	devices := make([]FIDO2DeviceInfo, len(locs))
+	for i, loc := range locs {
+		devices[i] = FIDO2DeviceInfo{
+			Index:   i,
+			Path:    loc.Path,
+			Product: loc.Product,
+		}
+	}
+	return devices, nil
+}
+
+// formatDeviceList formats a list of devices for display in error messages.
+func formatDeviceList(locs []*libfido2.DeviceLocation) string {
+	var sb strings.Builder
+	sb.WriteString("Available FIDO2 devices:\n")
+	for i, loc := range locs {
+		sb.WriteString(fmt.Sprintf("  [%d] %s (%s)\n", i, loc.Product, loc.Path))
+	}
+	return sb.String()
+}
+
 // Authenticate performs FIDO2 assertion with the connected device.
 // Returns the assertion data formatted for Keycloak submission.
 func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, error) {
@@ -94,19 +132,55 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		if p.UseBrowser {
 			return nil, errors.New("no FIDO2 device found, browser fallback requested")
 		}
-		return nil, errors.New("no FIDO2 device found. Please connect your security key and try again")
+		return nil, errors.New("no FIDO2 device found.\n\n" +
+			"Note: This tool only supports USB/NFC security keys (e.g., YubiKey).\n" +
+			"macOS Touch ID and iCloud Keychain passkeys are not supported by libfido2.\n\n" +
+			"Please connect a hardware security key and try again.")
 	}
 
-	// Use specified device or first available
-	devicePath := p.DevicePath
-	if devicePath == "" {
-		devicePath = locs[0].Path
-		fmt.Fprintf(os.Stderr, "Using FIDO2 device: %s\n", locs[0].Product)
+	// Determine which device to use
+	var devicePath string
+	var selectedDevice *libfido2.DeviceLocation
+
+	if p.DevicePath != "" {
+		// Explicit path specified
+		devicePath = p.DevicePath
+		// Find matching device for display
+		for _, loc := range locs {
+			if loc.Path == p.DevicePath {
+				selectedDevice = loc
+				break
+			}
+		}
+		if selectedDevice == nil {
+			return nil, fmt.Errorf("specified device path %q not found.\n\n%s",
+				p.DevicePath, formatDeviceList(locs))
+		}
+	} else if p.DeviceIndex >= 0 {
+		// Index-based selection
+		if p.DeviceIndex >= len(locs) {
+			return nil, fmt.Errorf("device index %d out of range (0-%d).\n\n%s",
+				p.DeviceIndex, len(locs)-1, formatDeviceList(locs))
+		}
+		selectedDevice = locs[p.DeviceIndex]
+		devicePath = selectedDevice.Path
+	} else {
+		// Auto-detect: use first device, but warn if multiple available
+		selectedDevice = locs[0]
+		devicePath = selectedDevice.Path
+
+		if len(locs) > 1 {
+			fmt.Fprintf(os.Stderr, "Multiple FIDO2 devices detected. Using first device.\n")
+			fmt.Fprintf(os.Stderr, "%s", formatDeviceList(locs))
+			fmt.Fprintf(os.Stderr, "Use --webauthn-device-index N to select a specific device.\n\n")
+		}
 	}
+
+	fmt.Fprintf(os.Stderr, "Using FIDO2 device: %s (%s)\n", selectedDevice.Product, selectedDevice.Path)
 
 	device, err := libfido2.NewDevice(devicePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open FIDO2 device: %w", err)
+		return nil, fmt.Errorf("failed to open FIDO2 device %q: %w", selectedDevice.Product, err)
 	}
 	// Note: Device doesn't have a public Close method, cleanup is handled internally
 	// Build clientDataJSON (this is what the browser creates)
@@ -206,11 +280,12 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	if err != nil {
 		// If assertion failed without credential IDs, suggest browser fallback
 		if len(credentialIDs) == 0 {
-			return nil, fmt.Errorf("FIDO2 resident key discovery failed: %w. "+
-				"Your YubiKey may not have discoverable (resident) credentials for %s. "+
-				"Try using --webauthn-browser for browser-based authentication", err, form.RPID)
+			return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w.\n\n"+
+				"This device may not have credentials registered for %s.\n"+
+				"If your passkey is stored elsewhere (e.g., iCloud Keychain, another security key),\n"+
+				"try using --webauthn-browser for browser-based authentication.", devicePath, err, form.RPID)
 		}
-		return nil, fmt.Errorf("FIDO2 assertion failed: %w", err)
+		return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w", devicePath, err)
 	}
 
 	// Format result for Keycloak
