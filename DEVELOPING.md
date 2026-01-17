@@ -8,6 +8,72 @@ This guide is for contributors who want to build, test, and develop cern-sso-cli
 - Make
 - Docker (for container builds, optional)
 
+## Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com) hooks to ensure code quality. We recommend using [prek](https://github.com/j178/prek), a faster Rust-based alternative.
+
+### Installation
+
+```bash
+# Install prek (recommended - faster, single binary)
+cargo install prek
+
+# Or install pre-commit (Python-based)
+pip install pre-commit
+
+# Install golangci-lint (required for lint hooks)
+# macOS
+brew install golangci-lint
+
+# Linux
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+```
+
+### Setup
+
+```bash
+# Install the git hooks
+prek install        # or: pre-commit install
+prek install --hook-type commit-msg  # Enable conventional commit checks
+```
+
+### Usage
+
+```bash
+# Run all hooks on staged files (automatic on git commit)
+prek run
+
+# Run all hooks on all files
+prek run --all-files
+
+# Run specific hook
+prek run golangci-lint --all-files
+
+# Run linting manually (without pre-commit)
+make lint
+```
+
+### Conventional Commits
+
+Commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+
+**Examples:**
+```bash
+git commit -m "feat: add WebAuthn device selection"
+git commit -m "fix(auth): handle expired Kerberos tickets"
+git commit -m "docs: update installation instructions"
+```
+
 ## Build from Source
 
 ```bash
