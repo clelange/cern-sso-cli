@@ -18,7 +18,7 @@ import (
 	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
 	"github.com/clelange/cern-sso-cli/pkg/browser"
 	"github.com/jcmturner/gokrb5/v8/client"
-	"github.com/jcmturner/gokrb5/v8/config"
+	"github.com/jcmturner/gokrb5/v8/config" // Added for CCache export
 	"github.com/jcmturner/gokrb5/v8/keytab"
 	"github.com/jcmturner/gokrb5/v8/spnego"
 	"golang.org/x/net/publicsuffix"
@@ -199,6 +199,7 @@ type KerberosClient struct {
 	otpProvider      *OTPProvider      // Optional OTP provider for 2FA
 	webauthnProvider *WebAuthnProvider // Optional WebAuthn provider for FIDO2 2FA
 	preferredMethod  string            // Preferred 2FA method: "otp", "webauthn", or "" (use default)
+	authConfig       AuthConfig        // Authentication configuration
 }
 
 // NewKerberosClient creates a new Kerberos client with automatic authentication.
@@ -934,6 +935,101 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 
 // LoginWithKerberos performs the full Kerberos login flow.
 func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string, verifyCert bool) (*LoginResult, error) {
+	// If browser-based authentication is preferred, use it immediately.
+	// This ensures we capture all necessary cookies (including OIDC) correctly,
+	// even if 2FA strictly isn't required by the server.
+	if k.webauthnProvider != nil && k.webauthnProvider.UseBrowser {
+		// Browser auth needs longer timeout (3 min minimum) for user interaction
+		timeout := k.webauthnProvider.GetTimeout()
+		if timeout < 3*time.Minute {
+			timeout = 3 * time.Minute
+		}
+
+		// Prepare environment for Chrome
+		env := make(map[string]string)
+
+		// If a specific user is requested, try to find their ticket
+		// This is critical for supporting --user with browser flow
+		if k.username != "" && runtime.GOOS == "darwin" {
+			// Temporarily unset KRB5CCNAME to ensure klist sees the system API caches
+			// instead of any file cache set by tryUserCacheAuth
+			originalKrb5CCName := os.Getenv("KRB5CCNAME")
+			os.Unsetenv("KRB5CCNAME")
+
+			// On macOS, we can try to find the specific user's cache via klist -l
+			// This works for both API-based and file-based caches if klist knows about them.
+			cacheInfo, err := FindCacheByUsername(k.username)
+
+			// Restore env
+			if originalKrb5CCName != "" {
+				os.Setenv("KRB5CCNAME", originalKrb5CCName)
+			}
+
+			if err == nil {
+				// If this is ALREADY the default cache, we should NOT set KRB5CCNAME.
+				// Chrome on macOS picks up the system default cache reliably.
+				// Setting KRB5CCNAME to a file export might break things (sandbox, format, etc.)
+				if cacheInfo.IsDefault {
+					// Do nothing - env stays empty, Chrome uses system default
+				} else {
+					var ccPath string
+
+					// Handle different cache types
+					if strings.HasPrefix(cacheInfo.CacheName, "FILE:") {
+						// Use existing file directly
+						ccPath = strings.TrimPrefix(cacheInfo.CacheName, "FILE:")
+					} else if strings.HasPrefix(cacheInfo.CacheName, "API:") {
+						// Pass the API cache identifier directly to Chrome
+						// Chrome on macOS should be able to use the native GSSAPI context
+						ccPath = cacheInfo.CacheName
+					} else {
+						// Assume it's a file path if no prefix
+						ccPath = cacheInfo.CacheName
+					}
+
+					if ccPath != "" {
+						env["KRB5CCNAME"] = ccPath
+					}
+				}
+			} else {
+				// User requested a specific user, but we couldn't find a ticket
+				// Warn the user that we might be using the wrong ticket
+				fmt.Fprintf(os.Stderr, "Warning: ticket for %s not found in system klist, using default\n", k.username)
+			}
+		}
+
+		// (Legacy/Future) If we have an internal TGT, export it (stubbed for now)
+		homeDir, _ := os.UserHomeDir()
+		cacheDir := filepath.Join(homeDir, ".cache", "cern-sso-cli")
+		os.MkdirAll(cacheDir, 0700)
+		tmpCCache, err := os.CreateTemp(cacheDir, "krb5cc_*")
+		if err == nil {
+			tmpCCache.Close()
+			if err := k.ExportCCache(tmpCCache.Name()); err == nil {
+				// Only set if not already set by specific user logic
+				if _, exists := env["KRB5CCNAME"]; !exists {
+					env["KRB5CCNAME"] = tmpCCache.Name()
+				}
+				// Clean up after we're done
+				defer os.Remove(tmpCCache.Name())
+			} else {
+				// Clean explicit cleanup since we didn't use it
+				os.Remove(tmpCCache.Name())
+			}
+		}
+
+		browserResult, err := browser.AuthenticateWithChrome(loginPage, authHostname, timeout, env)
+		if err != nil {
+			return nil, &LoginError{Message: fmt.Sprintf("browser authentication failed: %v", err)}
+		}
+		// Return the browser result directly
+		return &LoginResult{
+			Cookies:     browserResult.Cookies,
+			RedirectURI: browserResult.FinalURL,
+			Username:    browserResult.Username,
+		}, nil
+	}
+
 	// Step 1: Fetch login page (no SPNEGO needed yet)
 	resp, err := k.httpClient.Get(loginPage)
 	if err != nil {
@@ -1125,7 +1221,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				if k.webauthnProvider.UseBrowser {
 					// Use Chrome browser for WebAuthn (supports Touch ID)
 					timeout := k.webauthnProvider.GetTimeout()
-					browserResult, err := browser.AuthenticateWithChrome(loginPage, authHostname, timeout)
+					browserResult, err := browser.AuthenticateWithChrome(loginPage, authHostname, timeout, nil)
 					if err != nil {
 						return nil, &LoginError{Message: fmt.Sprintf("browser authentication failed: %v", err)}
 					}
@@ -1355,4 +1451,11 @@ func (k *KerberosClient) CollectCookies(targetURL string, authHostname string, r
 
 	// Return all cookies collected during the session
 	return k.GetCollectedCookies(), nil
+}
+
+// ExportCCache writes the internal Kerberos credentials to a ccache file.
+func (k *KerberosClient) ExportCCache(path string) error {
+	// Stub implementation - robust gokrb5 ccache export requires deeper integration
+	// For now, we return error so it falls back to system kinit if available.
+	return fmt.Errorf("ccache export not fully implemented - please run kinit in your shell")
 }
