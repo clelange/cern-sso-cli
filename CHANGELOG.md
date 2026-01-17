@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.26.0](https://github.com/clelange/cern-sso-cli/compare/v0.25.0...v0.26.0) (2026-01-17)
+
+
+### Features
+
+* **browser:** add browser-based authentication with Kerberos support ([815a012](https://github.com/clelange/cern-sso-cli/commit/815a012f946e51c6a7489907c6cc85b74b8d15cf))
+
+
+### Bug Fixes
+
+* improve browser auth code quality and fix resource leaks ([19da49e](https://github.com/clelange/cern-sso-cli/commit/19da49e1f44cf67123efef96b4169678dbe5f14e))
+* skip FindCacheByUsername tests when klist unavailable ([4df86be](https://github.com/clelange/cern-sso-cli/commit/4df86be44090737c0b37c9078abf41f53ae20a5f))
+
 ## [0.25.0](https://github.com/clelange/cern-sso-cli/compare/v0.24.0...v0.25.0) (2026-01-16)
 
 
