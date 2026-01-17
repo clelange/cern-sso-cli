@@ -73,10 +73,9 @@ func TestAuthenticateWithChrome_Signature(t *testing.T) {
 // This is a contract test to prevent breaking changes to the result type.
 func TestAuthResult_Fields(t *testing.T) {
 	result := &AuthResult{
-		Cookies:     nil,
-		FinalURL:    "https://example.com",
-		RedirectURI: "https://example.com/redirect",
-		Username:    "testuser",
+		Cookies:  nil,
+		FinalURL: "https://example.com",
+		Username: "testuser",
 	}
 
 	// Verify all fields are accessible
@@ -85,9 +84,6 @@ func TestAuthResult_Fields(t *testing.T) {
 	}
 	if result.FinalURL != "https://example.com" {
 		t.Errorf("FinalURL = %q, want %q", result.FinalURL, "https://example.com")
-	}
-	if result.RedirectURI != "https://example.com/redirect" {
-		t.Errorf("RedirectURI = %q, want %q", result.RedirectURI, "https://example.com/redirect")
 	}
 	if result.Username != "testuser" {
 		t.Errorf("Username = %q, want %q", result.Username, "testuser")

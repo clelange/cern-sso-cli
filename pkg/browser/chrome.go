@@ -16,10 +16,9 @@ import (
 
 // AuthResult contains the result of browser-based authentication.
 type AuthResult struct {
-	Cookies     []*http.Cookie
-	FinalURL    string
-	RedirectURI string
-	Username    string
+	Cookies  []*http.Cookie
+	FinalURL string
+	Username string
 }
 
 // AuthenticateWithChrome opens Chrome, navigates to the target URL, waits for
@@ -231,11 +230,13 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 	var cdpCookies []*network.Cookie
 
 	// Build list of URLs to get cookies for
+	// Use the authHostname parameter instead of hardcoded values
+	authURL := fmt.Sprintf("https://%s/", authHostname)
 	cookieURLs := []string{
 		targetURL,
-		"https://auth.cern.ch/",
-		"https://auth.cern.ch/auth/realms/cern/",
-		"https://auth.cern.ch/auth/realms/kerberos/",
+		authURL,
+		authURL + "auth/realms/cern/",
+		authURL + "auth/realms/kerberos/",
 	}
 
 	// Parse target URL to also add root domain
@@ -306,15 +307,20 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 }
 
 // IsChromeAvailable checks if Chrome or Chromium is available on the system.
+// Returns true if Chrome/Chromium is found at common installation paths.
 func IsChromeAvailable() bool {
-	// chromedp will find Chrome automatically, but we can do a quick check
-	// This is mainly for providing better error messages
 	paths := []string{
+		// macOS
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"/Applications/Chromium.app/Contents/MacOS/Chromium",
+		// Linux
 		"/usr/bin/google-chrome",
+		"/usr/bin/google-chrome-stable",
 		"/usr/bin/chromium",
 		"/usr/bin/chromium-browser",
+		// Snap/Flatpak on Linux
+		"/snap/bin/chromium",
+		"/var/lib/flatpak/exports/bin/com.google.Chrome",
 	}
 
 	for _, path := range paths {
@@ -323,6 +329,5 @@ func IsChromeAvailable() bool {
 		}
 	}
 
-	// Let chromedp try to find it
-	return true // chromedp has its own detection
+	return false
 }

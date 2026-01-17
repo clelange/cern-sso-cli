@@ -843,11 +843,11 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				redirectURI = location
 			}
 
+			resp.Body.Close() // Close previous response before reassigning
 			resp, err = k.httpClient.Get(location)
 			if err != nil {
 				return nil, fmt.Errorf("redirect failed: %w", err)
 			}
-			defer resp.Body.Close()
 			continue
 		}
 
@@ -895,11 +895,11 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 					action = actURL.String()
 				}
 
+				resp.Body.Close() // Close previous response before reassigning
 				resp, err = k.httpClient.PostForm(action, data)
 				if err != nil {
 					return nil, fmt.Errorf("form auto-submit failed: %w", err)
 				}
-				defer resp.Body.Close()
 				continue
 			}
 		}
@@ -913,11 +913,11 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				actURL = baseURL.ResolveReference(actURL)
 				action = actURL.String()
 			}
+			resp.Body.Close() // Close previous response before reassigning
 			resp, err = k.httpClient.PostForm(action, data)
 			if err != nil {
 				return nil, fmt.Errorf("SAML POST failed: %w", err)
 			}
-			defer resp.Body.Close()
 			continue
 		}
 
@@ -939,6 +939,11 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	// This ensures we capture all necessary cookies (including OIDC) correctly,
 	// even if 2FA strictly isn't required by the server.
 	if k.webauthnProvider != nil && k.webauthnProvider.UseBrowser {
+		// Check if Chrome is available before attempting browser auth
+		if !browser.IsChromeAvailable() {
+			return nil, &LoginError{Message: "--browser requires Chrome or Chromium to be installed"}
+		}
+
 		// Browser auth needs longer timeout (3 min minimum) for user interaction
 		timeout := k.webauthnProvider.GetTimeout()
 		if timeout < 3*time.Minute {
@@ -994,27 +999,9 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			} else {
 				// User requested a specific user, but we couldn't find a ticket
 				// Warn the user that we might be using the wrong ticket
-				fmt.Fprintf(os.Stderr, "Warning: ticket for %s not found in system klist, using default\n", k.username)
-			}
-		}
-
-		// (Legacy/Future) If we have an internal TGT, export it (stubbed for now)
-		homeDir, _ := os.UserHomeDir()
-		cacheDir := filepath.Join(homeDir, ".cache", "cern-sso-cli")
-		os.MkdirAll(cacheDir, 0700)
-		tmpCCache, err := os.CreateTemp(cacheDir, "krb5cc_*")
-		if err == nil {
-			tmpCCache.Close()
-			if err := k.ExportCCache(tmpCCache.Name()); err == nil {
-				// Only set if not already set by specific user logic
-				if _, exists := env["KRB5CCNAME"]; !exists {
-					env["KRB5CCNAME"] = tmpCCache.Name()
+				if !k.authConfig.Quiet {
+					fmt.Fprintf(os.Stderr, "Warning: ticket for %s not found in system klist, using default\n", k.username)
 				}
-				// Clean up after we're done
-				defer os.Remove(tmpCCache.Name())
-			} else {
-				// Clean explicit cleanup since we didn't use it
-				os.Remove(tmpCCache.Name())
 			}
 		}
 
@@ -1040,11 +1027,11 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	// Follow redirects to get to the actual login page
 	for resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently {
 		location := resp.Header.Get("Location")
+		resp.Body.Close() // Close previous response before reassigning
 		resp, err = k.httpClient.Get(location)
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer resp.Body.Close()
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
