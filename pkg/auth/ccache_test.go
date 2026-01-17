@@ -2,6 +2,7 @@ package auth
 
 import (
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
@@ -200,6 +201,12 @@ func TestConvertSpecificCacheToFile_CacheDir(t *testing.T) {
 // TestFindCacheByUsername_NormalizesUsername verifies that FindCacheByUsername
 // properly normalizes username input before searching.
 func TestFindCacheByUsername_NormalizesUsername(t *testing.T) {
+	// This test requires klist to be installed
+	// Skip if klist is not available (common in CI environments)
+	if _, err := exec.LookPath("klist"); err != nil {
+		t.Skip("Skipping test - klist not available")
+	}
+
 	// This test verifies the normalization logic works correctly.
 	// Without actual Kerberos tickets, we test the error message formatting.
 
@@ -232,6 +239,12 @@ func TestFindCacheByUsername_NormalizesUsername(t *testing.T) {
 // TestFindCacheByUsername_NotFound verifies that FindCacheByUsername returns
 // a helpful error message when no matching cache is found.
 func TestFindCacheByUsername_NotFound(t *testing.T) {
+	// This test requires klist to be installed
+	// Skip if klist is not available (common in CI environments)
+	if _, err := exec.LookPath("klist"); err != nil {
+		t.Skip("Skipping test - klist not available")
+	}
+
 	// Use a username that definitely won't exist
 	_, err := FindCacheByUsername("nonexistent_test_user_12345")
 	if err == nil {
