@@ -219,10 +219,30 @@ cern-get-keytab --user --login youruser --keytab ~/.keytab
 For more information, see [Generating a user keytab at CERN](https://cern.service-now.com/service-portal?id=kb_article&n=KB0003405).
 
 
-### WebAuthn (FIDO2 / YubiKey)
-If your account supports WebAuthn, it may prompt you to touch your key.
+### WebAuthn (FIDO2 / YubiKey / Touch ID)
+If your account supports WebAuthn, you can use:
+1.  **Hardware Keys (YubiKey)**: Supported natively via `libfido2`.
+2.  **Platform Authenticators (Touch ID / iCloud Keychain)**: Supported via **Browser Authentication**.
 
-**Important**: This tool uses `libfido2`, which only supports USB/NFC security keys (e.g., YubiKey). macOS Touch ID and iCloud Keychain passkeys are **not supported**.
+#### Browser Authentication (Chrome / Touch ID)
+This mode opens a visible Google Chrome window to perform the authentication. This is powerful because:
+
+1.  **Kerberos SSO**: It automatically uses your existing Kerberos tickets (from `kinit`), often logging you in without typing a password.
+2.  **Flexible 2FA**: If 2FA is required, you can use any method supported by the browser:
+    *   **OTP** (Authenticator App)
+    *   **USB Security Keys** (YubiKey)
+    *   **Touch ID / Fingerprint** (Exclusive to this mode; not supported in CLI-only mode)
+
+**Requirements**:
+*   Google Chrome installed
+
+**Usage**:
+```bash
+cern-sso-cli cookie --browser --url https://gitlab.cern.ch
+```
+
+#### Hardware Keys (Headless)
+**Important**: Native hardware key support uses `libfido2`, which only supports USB/NFC security keys (e.g., YubiKey).
 
 **List available devices:**
 ```bash
@@ -235,6 +255,7 @@ cern-sso-cli --webauthn-device-index 0 cookie --url https://gitlab.cern.ch
 ```
 
 **Flags**:
+*   `--browser`: Use visual browser (supports Touch ID / iCloud Keychain).
 *   `--use-webauthn`: Force WebAuthn usage.
 *   `--webauthn-pin 1234`: Provide PIN if required.
 *   `--webauthn-device-index N`: Select device by index (see `webauthn list`).
@@ -255,6 +276,7 @@ cern-sso-cli --webauthn-device-index 0 cookie --url https://gitlab.cern.ch
 | `--otp-retries` | Max OTP retry attempts (default 3). |
 | `--use-otp` | Use OTP even if WebAuthn is default. |
 | `--use-webauthn` | Use WebAuthn even if OTP is default. |
+| `--browser` | Use browser for authentication (supports WebAuthn, Touch ID, etc.). |
 | `--webauthn-device` | Path to specific FIDO2 device (auto-detect if empty). |
 | `--webauthn-device-index` | Index of FIDO2 device to use (see `webauthn list`), -1 for auto. |
 | `--webauthn-pin` | PIN for FIDO2 security key (alternative to prompt). |

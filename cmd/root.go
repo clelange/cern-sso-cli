@@ -28,7 +28,7 @@ var (
 	webauthnDevice      string
 	webauthnDeviceIndex int
 	webauthnTimeout     int
-	webauthnBrowser     bool
+	browserAuth         bool // New flag for browser-based authentication
 	// 2FA method preference flags
 	useOTP      bool
 	useWebAuthn bool
@@ -85,7 +85,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&webauthnDevice, "webauthn-device", "", "Path to specific FIDO2 device (auto-detect if empty)")
 	rootCmd.PersistentFlags().IntVar(&webauthnDeviceIndex, "webauthn-device-index", -1, "Index of FIDO2 device to use (see 'webauthn list'), -1 for auto-detect")
 	rootCmd.PersistentFlags().IntVar(&webauthnTimeout, "webauthn-timeout", 30, "Timeout in seconds for FIDO2 device interaction")
-	rootCmd.PersistentFlags().BoolVar(&webauthnBrowser, "webauthn-browser", false, "Use browser for WebAuthn instead of direct FIDO2")
+	rootCmd.PersistentFlags().BoolVar(&browserAuth, "browser", false, "Use browser for authentication (supports WebAuthn, Touch ID, etc.)")
 	// 2FA method preference flags
 	rootCmd.PersistentFlags().BoolVar(&useOTP, "use-otp", false, "Use OTP (authenticator app) for 2FA, even if WebAuthn is the default")
 	rootCmd.PersistentFlags().BoolVar(&useWebAuthn, "use-webauthn", false, "Use WebAuthn (security key) for 2FA, even if OTP is the default")
@@ -150,13 +150,17 @@ func GetWebAuthnProvider() *auth.WebAuthnProvider {
 		DevicePath:  webauthnDevice,
 		DeviceIndex: webauthnDeviceIndex,
 		Timeout:     time.Duration(webauthnTimeout) * time.Second,
-		UseBrowser:  webauthnBrowser,
+		UseBrowser:  browserAuth,
 	}
 }
 
 // GetPreferredMethod returns the user's preferred 2FA method.
 // Returns "otp", "webauthn", or "" (use server default).
 func GetPreferredMethod() string {
+	// If browser auth is requested, prefer it
+	if browserAuth {
+		return "webauthn" // Or just treat as browser preference
+	}
 	if useOTP {
 		return "otp"
 	}

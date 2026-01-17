@@ -171,7 +171,18 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 // saveCookiesFromAuth collects and saves cookies from a successful authentication.
 func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult) *CookieOutput {
 	logPrintln("Collecting cookies...")
-	cookies, err := client.CollectCookies(targetURL, authHost, result)
+
+	var cookies []*http.Cookie
+	var err error
+
+	// If result already has cookies (e.g., from browser auth), use those directly
+	// Otherwise, collect cookies via HTTP requests
+	if len(result.Cookies) > 0 {
+		cookies = result.Cookies
+	} else {
+		cookies, err = client.CollectCookies(targetURL, authHost, result)
+	}
+
 	client.Close()
 	if err != nil {
 		logInfo("Warning: Failed to collect cookies: %v\n", err)

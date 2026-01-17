@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -191,7 +192,16 @@ func ConvertSpecificCacheToFile(cacheInfo *CacheInfo) (string, error) {
 
 	// Create cache file path unique to this principal
 	// Use a hash of principal to avoid issues with special characters
-	cacheFile := fmt.Sprintf("/tmp/krb5cc_sso_cli_%d_%s", os.Getuid(), strings.Replace(cacheInfo.Principal, "@", "_", -1))
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home dir: %w", err)
+	}
+	cacheDir := filepath.Join(homeDir, ".cache", "cern-sso-cli")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create cache dir: %w", err)
+	}
+
+	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("krb5cc_%d_%s", os.Getuid(), strings.Replace(cacheInfo.Principal, "@", "_", -1)))
 
 	// Use kgetcred to export the TGT from the specific API cache to a file
 	// This extracts only the TGT (krbtgt/CERN.CH@CERN.CH) which is sufficient for SPNEGO

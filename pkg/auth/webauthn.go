@@ -283,7 +283,7 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 			return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w.\n\n"+
 				"This device may not have credentials registered for %s.\n"+
 				"If your passkey is stored elsewhere (e.g., iCloud Keychain, another security key),\n"+
-				"try using --webauthn-browser for browser-based authentication.", devicePath, err, form.RPID)
+				"try using --browser for browser-based authentication.", devicePath, err, form.RPID)
 		}
 		return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w", devicePath, err)
 	}

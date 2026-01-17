@@ -84,6 +84,30 @@ make test-integration
 The integration tests verify cookie generation and authentication against:
 - account.web.cern.ch
 - gitlab.cern.ch
+- account.web.cern.ch
+
+### Testing Browser Authentication
+
+Browser-based authentication (Touch ID, Kerberos integration) is difficult to test in CI/CD. It requires manual verification:
+
+**Requirements:**
+- Google Chrome installed on your machine
+- macOS (for Touch ID / native Kerberos) or Linux (Chrome required)
+
+**Run the test:**
+```bash
+# 1. Standard browser auth (WebAuthn/Touch ID)
+go run . cookie --browser --url https://gitlab.cern.ch
+
+# 2. Kerberos integration (if you have valid kinit tickets)
+# Ensure you run 'kinit' first
+DEBUG=1 go run . cookie --browser --url https://gitlab.cern.ch
+```
+
+Verify that:
+1. Chrome launch is visible.
+2. The "Sign in with Kerberos" button is clicked automatically (if using Kerberos).
+3. The flow completes and cookies are saved.
 
 ## Building Without WebAuthn
 
