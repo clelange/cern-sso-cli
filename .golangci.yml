@@ -1,0 +1,80 @@
+# golangci-lint configuration
+# See: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    # Error handling
+    - errcheck
+    - errorlint
+
+    # Style and formatting
+    - gofmt
+    - goimports
+
+    # Bugs and suspicious constructs
+    - govet
+    - staticcheck
+    - ineffassign
+
+    # Code complexity
+    - gocyclo
+    - cyclop
+
+    # Security
+    - gosec
+
+    # Performance
+    - prealloc
+
+    # Code quality
+    - unconvert
+    - unused
+    - unparam
+    - nakedret
+    - misspell
+    - gocritic
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  cyclop:
+    max-complexity: 15
+  goimports:
+    local-prefixes: github.com/clelange/cern-sso-cli
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - ifElseChain
+  gosec:
+    excludes:
+      - G104 # Unhandled errors (too noisy for CLI apps)
+  nakedret:
+    max-func-lines: 30
+  misspell:
+    locale: UK
+
+issues:
+  exclude-dirs:
+    - passkey-helper
+  exclude-rules:
+    # Exclude some linters from running on tests
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - cyclop
+        - gosec
+        - errcheck
+    # Exclude generated files
+    - path: ".*_generated\\.go"
+      linters:
+        - all

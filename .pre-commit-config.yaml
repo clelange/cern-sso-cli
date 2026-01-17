@@ -1,0 +1,56 @@
+# See https://pre-commit.com for more information
+# Compatible with prek (https://github.com/j178/prek) - a faster drop-in replacement
+# Install: pip install pre-commit OR cargo install prek
+# Setup: pre-commit install (or prek install)
+
+repos:
+  # General file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Conventional commits
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: ['--strict']
+
+  # Go formatting
+  - repo: https://github.com/tekwizely/pre-commit-golang
+    rev: v1.0.0-rc.1
+    hooks:
+      - id: go-fmt
+      - id: go-imports
+        args: ['-local', 'github.com/clelange/cern-sso-cli']
+      - id: go-mod-tidy
+      - id: go-vet-mod
+      - id: go-build-mod
+
+  # Go linting with golangci-lint
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.0.2
+    hooks:
+      - id: golangci-lint
+        args: ['--timeout=5m']
+
+  # Security scanning (local hook - requires gosec installed)
+  - repo: local
+    hooks:
+      - id: gosec
+        name: gosec
+        entry: gosec
+        args: ['-exclude-dir=passkey-helper', '-quiet', './...']
+        language: system
+        pass_filenames: false
+        types: [go]
