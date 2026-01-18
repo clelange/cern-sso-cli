@@ -109,8 +109,8 @@ func TestParseOTPForm(t *testing.T) {
 	html := `
 		<html>
 			<body>
-				<form id="kc-otp-login-form" 
-				      action="https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test" 
+				<form id="kc-otp-login-form"
+				      action="https://auth.cern.ch/auth/realms/cern/login-actions/authenticate?session_code=test"
 				      method="post">
 					<input id="otp" name="otp" type="text" autocomplete="one-time-code" />
 					<input name="login" id="kc-login" type="submit" value="Sign In" />

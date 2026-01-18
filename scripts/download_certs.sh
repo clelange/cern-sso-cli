@@ -33,4 +33,3 @@ curl -fsSL 'https://cafiles.cern.ch/cafiles/certificates/CERN%20Certification%20
 echo "  ✓ CERN Certification Authority"
 
 echo "Done! Certificates saved to ${CERTS_DIR}"
-

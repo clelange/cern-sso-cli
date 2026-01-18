@@ -10,6 +10,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -366,7 +367,98 @@ func skipIfNoCredentials(t *testing.T) {
 	}
 }
 
-func verifyCookiesIntegration(t *testing.T, cookieFile, targetURL, expectedContent string) {
+// TestIntegration_OpenShiftPaaS tests SPA fallback for OpenShift at paas.cern.ch.
+// OpenShift uses JavaScript SPA with SERVER_FLAGS.loginURL that redirects to SSO.
+func TestIntegration_OpenShiftPaaS(t *testing.T) {
+	skipIfNoCredentials(t)
+
+	targetURL := "https://paas.cern.ch/"
+	authHost := "auth.cern.ch"
+	cookieFile := "test_openshift_cookies.txt"
+	defer os.Remove(cookieFile)
+
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
+	if err != nil {
+		t.Fatalf("Failed to create Kerberos client: %v", err)
+	}
+	defer kerbClient.Close()
+
+	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
+	if err != nil {
+		t.Fatalf("Failed to collect cookies: %v", err)
+	}
+
+	if len(cookies) == 0 {
+		t.Fatal("No cookies collected")
+	}
+	t.Logf("Collected %d cookies for OpenShift", len(cookies))
+
+	// Save cookies
+	u, _ := url.Parse(targetURL)
+	jar, _ := cookie.NewJar()
+	err = jar.Save(cookieFile, cookies, u.Hostname())
+	if err != nil {
+		t.Fatalf("Failed to save cookies: %v", err)
+	}
+
+	// Verify cookies work - check for OKD/OpenShift content
+	verifyCookiesIntegration(t, cookieFile, targetURL, "OKD")
+}
+
+// TestIntegration_HarborRegistry tests SPA fallback for Harbor at registry.cern.ch.
+// Harbor uses JavaScript SPA with OIDC auth detected via /api/v2.0/systeminfo.
+// Note: This test may fail if the user hasn't granted consent for this application.
+func TestIntegration_HarborRegistry(t *testing.T) {
+	skipIfNoCredentials(t)
+
+	targetURL := "https://registry.cern.ch/"
+	authHost := "auth.cern.ch"
+	cookieFile := "test_harbor_cookies.txt"
+	defer os.Remove(cookieFile)
+
+	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
+	if err != nil {
+		t.Fatalf("Failed to create Kerberos client: %v", err)
+	}
+	defer kerbClient.Close()
+
+	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, true)
+	if err != nil {
+		// Harbor may require first-time consent which can only be done in browser
+		if strings.Contains(err.Error(), "consent") {
+			t.Skip("Skipping: Harbor requires consent. Please accept manually in browser first.")
+		}
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	cookies, err := kerbClient.CollectCookies(targetURL, authHost, result)
+	if err != nil {
+		t.Fatalf("Failed to collect cookies: %v", err)
+	}
+
+	if len(cookies) == 0 {
+		t.Fatal("No cookies collected")
+	}
+	t.Logf("Collected %d cookies for Harbor", len(cookies))
+
+	// Save cookies
+	u, _ := url.Parse(targetURL)
+	jar, _ := cookie.NewJar()
+	err = jar.Save(cookieFile, cookies, u.Hostname())
+	if err != nil {
+		t.Fatalf("Failed to save cookies: %v", err)
+	}
+
+	// Verify cookies work - check for Harbor content
+	verifyCookiesIntegration(t, cookieFile, targetURL, "Harbor")
+}
+
+func verifyCookiesIntegration(t *testing.T, cookieFile, targetURL, expectedTitle string) {
 	// Load cookies
 	cookies, err := cookie.Load(cookieFile)
 	if err != nil {
@@ -393,14 +485,27 @@ func verifyCookiesIntegration(t *testing.T, cookieFile, targetURL, expectedConte
 		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Read body and check for expected content
-	buf := make([]byte, 4096)
-	n, _ := resp.Body.Read(buf)
-	body := string(buf[:n])
+	// Read full body to find title tag
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+	body := string(bodyBytes)
 
-	if !strings.Contains(body, expectedContent) {
-		t.Errorf("Expected response to contain %q, but it didn't. First 500 chars: %s",
-			expectedContent, body[:min(500, len(body))])
+	// Extract title from HTML
+	titleStart := strings.Index(body, "<title>")
+	titleEnd := strings.Index(body, "</title>")
+	if titleStart == -1 || titleEnd == -1 || titleEnd <= titleStart {
+		t.Errorf("Could not find <title> tag in response. First 500 chars: %s",
+			body[:min(500, len(body))])
+		return
+	}
+
+	title := body[titleStart+7 : titleEnd]
+	t.Logf("Page title: %q", title)
+
+	if !strings.Contains(title, expectedTitle) {
+		t.Errorf("Expected page title to contain %q, got %q", expectedTitle, title)
 	}
 
 	t.Logf("Successfully verified cookies work for %s (domain: %s)", targetURL, u.Hostname())

@@ -1094,7 +1094,26 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	// Step 2: Parse Kerberos link
 	kerbURL, err := ParseKerberosLink(bytes.NewReader(bodyBytes), authHostname)
 	if err != nil {
-		return nil, err
+		// Try SPA fallback detection for sites like Harbor or OpenShift
+		// that use JavaScript to initiate OIDC redirects
+		spaInfo, spaErr := DetectSPA(k.httpClient, loginPage, bodyBytes)
+		if spaErr == nil && spaInfo != nil {
+			// Navigate to the SPA's login page which should redirect to SSO
+			loginURL, loginBody, navErr := GetSPALoginPage(k.httpClient, spaInfo, authHostname)
+			if navErr == nil {
+				// Retry parsing the Kerberos link from the actual login page
+				kerbURL, err = ParseKerberosLink(bytes.NewReader(loginBody), authHostname)
+				if err == nil {
+					// Update bodyBytes for any subsequent processing
+					bodyBytes = loginBody
+					_ = loginURL // loginURL might be useful for debugging
+				}
+			}
+		}
+		// If still failing, return the original error
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Step 3: Follow redirects to get the actual SPNEGO URL

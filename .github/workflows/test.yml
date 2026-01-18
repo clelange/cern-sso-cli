@@ -102,16 +102,16 @@ jobs:
       run: |
         # Unset password env vars to ensure we use ccache
         unset KRB5_USERNAME KRB5_PASSWORD
-        
+
         # Test cookie command with ccache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
-        
+
         # Verify cookies were created
         if [ ! -f test_cookies.txt ]; then
           echo "ERROR: Cookie file not created"
           exit 1
         fi
-        
+
         echo "SUCCESS: Credential cache authentication works!"
         cat test_cookies.txt
 
