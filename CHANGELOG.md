@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/clelange/cern-sso-cli/compare/v0.27.0...v0.27.1) (2026-01-18)
+
+
+### Bug Fixes
+
+* ensures certificates are present for golangci-lint ([b323dbb](https://github.com/clelange/cern-sso-cli/commit/b323dbb902e742e180c9013a1248755b0deed364))
+
 ## [0.27.0](https://github.com/clelange/cern-sso-cli/compare/v0.26.0...v0.27.0) (2026-01-18)
 
 
