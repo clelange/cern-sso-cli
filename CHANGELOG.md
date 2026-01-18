@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.2](https://github.com/clelange/cern-sso-cli/compare/v0.27.1...v0.27.2) (2026-01-18)
+
+
+### Bug Fixes
+
+* address linter issues and clean up golangci-lint config ([8137c7a](https://github.com/clelange/cern-sso-cli/commit/8137c7ac9d167e635391211b0e3a0f10dc95e21d))
+
 ## [0.27.1](https://github.com/clelange/cern-sso-cli/compare/v0.27.0...v0.27.1) (2026-01-18)
 
 
