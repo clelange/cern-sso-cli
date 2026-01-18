@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.0](https://github.com/clelange/cern-sso-cli/compare/v0.26.0...v0.27.0) (2026-01-18)
+
+
+### Features
+
+* add harbor and openshift commands for direct service access ([61ee1d3](https://github.com/clelange/cern-sso-cli/commit/61ee1d335b843e8e57bea0c90e3d2188b2962a92))
+* add SPA fallback authentication for Harbor and OpenShift ([7ebf444](https://github.com/clelange/cern-sso-cli/commit/7ebf444a79ece459c17d9189dcbed5fa22017bc5))
+
 ## [0.26.0](https://github.com/clelange/cern-sso-cli/compare/v0.25.0...v0.26.0) (2026-01-17)
 
 
