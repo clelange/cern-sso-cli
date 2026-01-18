@@ -149,6 +149,37 @@ For machines without a browser or input method:
 cern-sso-cli device --client-id my-client-id
 ```
 
+### 5. Get Harbor CLI Secret
+
+Get your CLI secret for Docker login to CERN Harbor registry:
+
+```bash
+cern-sso-cli harbor
+```
+
+Use it with Docker:
+```bash
+docker login registry.cern.ch -u <username> -p <secret>
+```
+
+### 6. Get OpenShift Token
+
+Get your API token for OpenShift/OKD at CERN:
+
+```bash
+cern-sso-cli openshift
+```
+
+Or get the full `oc login` command:
+```bash
+cern-sso-cli openshift --login-command
+```
+
+Use with `oc`:
+```bash
+oc login --token=$(cern-sso-cli openshift) --server=https://api.paas.okd.cern.ch
+```
+
 ## Advanced Authentication
 
 ### Authentication Methods
@@ -323,6 +354,25 @@ cern-sso-cli --webauthn-device-index 0 cookie --url https://gitlab.cern.ch
 | `--url` | URL to verify cookies against (makes HTTP request). |
 | `--auth-host` | Authentication hostname for verification (default "auth.cern.ch"). |
 | `--insecure`, `-k` | Skip certificate validation when verifying. |
+
+### Harbor Command
+
+| Flag | Description |
+| ---- | ----------- |
+| `--url` | Harbor registry URL (default "https://registry.cern.ch"). |
+| `--auth-host` | Authentication hostname (default "auth.cern.ch"). |
+| `--insecure`, `-k` | Skip certificate validation. |
+| `--json` | Output result as JSON. |
+
+### OpenShift Command
+
+| Flag | Description |
+| ---- | ----------- |
+| `--url` | OpenShift cluster URL (default "https://paas.cern.ch"). |
+| `--auth-host` | Authentication hostname (default "auth.cern.ch"). |
+| `--login-command` | Output full `oc login` command instead of just the token. |
+| `--insecure`, `-k` | Skip certificate validation. |
+| `--json` | Output result as JSON. |
 
 ### Update Command
 
