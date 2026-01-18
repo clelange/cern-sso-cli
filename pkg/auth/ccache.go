@@ -26,7 +26,7 @@ func NormalizePrincipal(username string) string {
 		return ""
 	}
 	if !strings.Contains(username, "@") {
-		username = username + "@CERN.CH"
+		username += "@CERN.CH"
 	}
 	suffix := "@cern.ch"
 	lower := strings.ToLower(username)
@@ -201,7 +201,7 @@ func ConvertSpecificCacheToFile(cacheInfo *CacheInfo) (string, error) {
 		return "", fmt.Errorf("failed to create cache dir: %w", err)
 	}
 
-	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("krb5cc_%d_%s", os.Getuid(), strings.Replace(cacheInfo.Principal, "@", "_", -1)))
+	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("krb5cc_%d_%s", os.Getuid(), strings.ReplaceAll(cacheInfo.Principal, "@", "_")))
 
 	// Use kgetcred to export the TGT from the specific API cache to a file
 	// This extracts only the TGT (krbtgt/CERN.CH@CERN.CH) which is sufficient for SPNEGO

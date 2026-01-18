@@ -4,7 +4,6 @@ import (
 	"os"
 	"runtime"
 	"testing"
-	"time"
 )
 
 // TestIsChromeAvailable tests Chrome detection across platforms.
@@ -62,8 +61,7 @@ func TestIsChromeAvailable_PathChecks(t *testing.T) {
 func TestAuthenticateWithChrome_Signature(t *testing.T) {
 	// Verify the function signature by assigning to a typed variable
 	// This fails at compile time if the signature changes
-	var f func(string, string, time.Duration, map[string]string) (*AuthResult, error)
-	f = AuthenticateWithChrome
+	var f = AuthenticateWithChrome
 	_ = f // Use to prevent unused variable error
 
 	t.Log("AuthenticateWithChrome signature matches expected contract")

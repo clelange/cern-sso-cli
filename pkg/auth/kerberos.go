@@ -144,6 +144,8 @@ func findKeytabPath() string {
 //   - "" or "embedded": use the built-in CERN.CH configuration
 //   - "system": use system krb5.conf (KRB5_CONFIG env var or /etc/krb5.conf)
 //   - "/path/to/file": use a custom configuration file
+//
+//nolint:cyclop // Handles multiple config sources with platform-specific paths
 func LoadKrb5Config(source string) (*config.Config, error) {
 	switch source {
 	case "", Krb5ConfigEmbedded:
@@ -250,7 +252,7 @@ func tryUserCacheAuth(cfg *config.Config, username string) (*client.Client, stri
 		return nil, "", fmt.Errorf("failed to convert cache: %w", err)
 	}
 
-	os.Setenv("KRB5CCNAME", filePath)
+	_ = os.Setenv("KRB5CCNAME", filePath)
 	cl, err := NewClientFromCCache(cfg)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load converted cache: %w", err)
@@ -274,7 +276,7 @@ func tryDefaultCacheAuth(cfg *config.Config) (*client.Client, string, error) {
 	if IsMacOSAPICCache() {
 		filePath, convErr := ConvertAPICacheToFile()
 		if convErr == nil {
-			os.Setenv("KRB5CCNAME", filePath)
+			_ = os.Setenv("KRB5CCNAME", filePath)
 			cl, err = NewClientFromCCache(cfg)
 			if err == nil {
 				username := extractUsernameFromClient(cl)
@@ -295,6 +297,8 @@ func tryDefaultCacheAuth(cfg *config.Config) (*client.Client, string, error) {
 //  2. Keytab (if KRB5_KTNAME is set)
 //  3. Credential cache (ccache)
 //  4. Default keytab locations (~/.keytab, /etc/krb5.keytab)
+//
+//nolint:cyclop // Core auth function with multiple method discovery paths
 func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUsername string,
 	verifyCert bool, authConfig AuthConfig) (*KerberosClient, error) {
 
@@ -414,22 +418,20 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 	if usr, err := user.Current(); err == nil {
 		userKeytab := filepath.Join(usr.HomeDir, ".keytab")
 		if _, statErr := os.Stat(userKeytab); statErr == nil {
-			if cl, principal, err := tryKeytabAuth(cfg, userKeytab, username, authConfig.Quiet); err == nil {
+			cl, principal, err := tryKeytabAuth(cfg, userKeytab, username, authConfig.Quiet)
+			if err == nil {
 				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
-			} else {
-				if !authConfig.Quiet {
-					fmt.Fprintf(os.Stderr, "Warning: found keytab at %s but authentication failed: %v\n", userKeytab, err)
-				}
+			} else if !authConfig.Quiet {
+				fmt.Fprintf(os.Stderr, "Warning: found keytab at %s but authentication failed: %v\n", userKeytab, err)
 			}
 		}
 	}
 	if _, statErr := os.Stat("/etc/krb5.keytab"); statErr == nil {
-		if cl, principal, err := tryKeytabAuth(cfg, "/etc/krb5.keytab", username, authConfig.Quiet); err == nil {
+		cl, principal, err := tryKeytabAuth(cfg, "/etc/krb5.keytab", username, authConfig.Quiet)
+		if err == nil {
 			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
-		} else {
-			if !authConfig.Quiet {
-				fmt.Fprintf(os.Stderr, "Warning: found keytab at /etc/krb5.keytab but authentication failed: %v\n", err)
-			}
+		} else if !authConfig.Quiet {
+			fmt.Fprintf(os.Stderr, "Warning: found keytab at /etc/krb5.keytab but authentication failed: %v\n", err)
 		}
 	}
 
@@ -458,9 +460,10 @@ func extractUsernameFromClient(cl *client.Client) string {
 	return ""
 }
 
-// newKerberosClientFromKrbClient creates a KerberosClient from an existing gokrb5 client.
-func newKerberosClientFromKrbClient(cl *client.Client, version string, verifyCert bool) (*KerberosClient, error) {
-	return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, "")
+// newTestKerberosClient creates a KerberosClient for unit tests.
+// It uses a hardcoded "test" version string since it's only meant for testing.
+func newTestKerberosClient(cl *client.Client, verifyCert bool) (*KerberosClient, error) {
+	return newKerberosClientFromKrbClientWithUser(cl, "test", verifyCert, "")
 }
 
 // newKerberosClientFromKrbClientWithUser creates a KerberosClient from an existing gokrb5 client with a username.
@@ -565,6 +568,8 @@ func (k *KerberosClient) SetPreferredMethod(method string) {
 // switchTo2FAMethod switches from the current 2FA method to the preferred one.
 // It submits the "Try Another Way" form, parses the method selection page,
 // and selects the preferred method.
+//
+//nolint:cyclop // Multi-step form submission with redirect handling
 func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBody []byte, preferredMethod string) ([]byte, *http.Response, error) {
 	// Parse the "Try Another Way" form
 	tryAnotherWayForm, err := ParseTryAnotherWayForm(bytes.NewReader(currentBody))
@@ -590,7 +595,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to submit Try Another Way form: %w", err)
 	}
-	defer selectionResp.Body.Close()
+	defer func() { _ = selectionResp.Body.Close() }()
 
 	// Follow any redirects
 	for selectionResp.StatusCode == http.StatusFound || selectionResp.StatusCode == http.StatusSeeOther {
@@ -607,7 +612,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer selectionResp.Body.Close()
+		defer func() { _ = selectionResp.Body.Close() }()
 	}
 
 	selectionBody, err := io.ReadAll(selectionResp.Body)
@@ -645,7 +650,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to submit method selection: %w", err)
 	}
-	defer methodResp.Body.Close()
+	defer func() { _ = methodResp.Body.Close() }()
 
 	// Follow any redirects
 	for methodResp.StatusCode == http.StatusFound || methodResp.StatusCode == http.StatusSeeOther {
@@ -662,7 +667,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer methodResp.Body.Close()
+		defer func() { _ = methodResp.Body.Close() }()
 	}
 
 	methodBody, err := io.ReadAll(methodResp.Body)
@@ -779,6 +784,8 @@ type LoginResult struct {
 //
 // Returns success if cookies are valid (no redirect to auth hostname).
 // Returns error if cookies are invalid/missing (caller should fall back to Kerberos).
+//
+//nolint:cyclop // Complex redirect/form handling for SSO cookie validation
 func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname string, cookies []*http.Cookie) (*LoginResult, error) {
 	if len(cookies) == 0 {
 		return nil, fmt.Errorf("no cookies provided")
@@ -812,7 +819,11 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 	if err != nil {
 		return nil, fmt.Errorf("request with cookies failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	// Follow redirects and auto-submit forms (same logic as LoginWithKerberos post-SPNEGO)
 	// If cookies are valid, auth.cern.ch will auto-redirect back without requiring login
@@ -844,7 +855,7 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				redirectURI = location
 			}
 
-			resp.Body.Close() // Close previous response before reassigning
+			_ = resp.Body.Close() // Close previous response before reassigning
 			resp, err = k.httpClient.Get(location)
 			if err != nil {
 				return nil, fmt.Errorf("redirect failed: %w", err)
@@ -896,7 +907,7 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 					action = actURL.String()
 				}
 
-				resp.Body.Close() // Close previous response before reassigning
+				_ = resp.Body.Close() // Close previous response before reassigning
 				resp, err = k.httpClient.PostForm(action, data)
 				if err != nil {
 					return nil, fmt.Errorf("form auto-submit failed: %w", err)
@@ -914,7 +925,7 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				actURL = baseURL.ResolveReference(actURL)
 				action = actURL.String()
 			}
-			resp.Body.Close() // Close previous response before reassigning
+			_ = resp.Body.Close() // Close previous response before reassigning
 			resp, err = k.httpClient.PostForm(action, data)
 			if err != nil {
 				return nil, fmt.Errorf("SAML POST failed: %w", err)
@@ -935,6 +946,8 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 }
 
 // LoginWithKerberos performs the full Kerberos login flow.
+//
+//nolint:cyclop // Core SSO flow handling SPNEGO, 2FA, SPA detection, and redirects
 func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string, verifyCert bool) (*LoginResult, error) {
 	// If browser-based authentication is preferred, use it immediately.
 	// This ensures we capture all necessary cookies (including OIDC) correctly,
@@ -960,7 +973,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			// Temporarily unset KRB5CCNAME to ensure klist sees the system API caches
 			// instead of any file cache set by tryUserCacheAuth
 			originalKrb5CCName := os.Getenv("KRB5CCNAME")
-			os.Unsetenv("KRB5CCNAME")
+			_ = os.Unsetenv("KRB5CCNAME")
 
 			// On macOS, we can try to find the specific user's cache via klist -l
 			// This works for both API-based and file-based caches if klist knows about them.
@@ -968,7 +981,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 
 			// Restore env
 			if originalKrb5CCName != "" {
-				os.Setenv("KRB5CCNAME", originalKrb5CCName)
+				_ = os.Setenv("KRB5CCNAME", originalKrb5CCName)
 			}
 
 			if err == nil {
@@ -981,15 +994,12 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 					var ccPath string
 
 					// Handle different cache types
-					if strings.HasPrefix(cacheInfo.CacheName, "FILE:") {
+					switch {
+					case strings.HasPrefix(cacheInfo.CacheName, "FILE:"):
 						// Use existing file directly
 						ccPath = strings.TrimPrefix(cacheInfo.CacheName, "FILE:")
-					} else if strings.HasPrefix(cacheInfo.CacheName, "API:") {
-						// Pass the API cache identifier directly to Chrome
-						// Chrome on macOS should be able to use the native GSSAPI context
-						ccPath = cacheInfo.CacheName
-					} else {
-						// Assume it's a file path if no prefix
+					default:
+						// API: or plain path
 						ccPath = cacheInfo.CacheName
 					}
 
@@ -1023,12 +1033,16 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch login page: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	// Follow redirects to get to the actual login page
 	for resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently {
 		location := resp.Header.Get("Location")
-		resp.Body.Close() // Close previous response before reassigning
+		_ = resp.Body.Close() // Close previous response before reassigning
 		resp, err = k.httpClient.Get(location)
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
@@ -1064,7 +1078,11 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			if err != nil {
 				return nil, fmt.Errorf("failed to submit OIDC form: %w", err)
 			}
-			defer oidcResp.Body.Close()
+			defer func() {
+				if oidcResp != nil && oidcResp.Body != nil {
+					_ = oidcResp.Body.Close()
+				}
+			}()
 
 			// Follow any redirects
 			for oidcResp.StatusCode == http.StatusFound || oidcResp.StatusCode == http.StatusSeeOther {
@@ -1080,7 +1098,11 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				if err != nil {
 					return nil, fmt.Errorf("failed to follow OIDC redirect: %w", err)
 				}
-				defer oidcResp.Body.Close()
+				defer func() {
+					if oidcResp != nil && oidcResp.Body != nil {
+						_ = oidcResp.Body.Close()
+					}
+				}()
 			}
 
 			// Now we should be at the Keycloak login page
@@ -1088,7 +1110,6 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			if err != nil {
 				return nil, fmt.Errorf("failed to read OIDC response: %w", err)
 			}
-			resp = oidcResp
 		}
 	}
 
@@ -1100,15 +1121,10 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		spaInfo, spaErr := DetectSPA(k.httpClient, loginPage, bodyBytes)
 		if spaErr == nil && spaInfo != nil {
 			// Navigate to the SPA's login page which should redirect to SSO
-			loginURL, loginBody, navErr := GetSPALoginPage(k.httpClient, spaInfo, authHostname)
+			_, loginBody, navErr := GetSPALoginPage(k.httpClient, spaInfo, authHostname)
 			if navErr == nil {
 				// Retry parsing the Kerberos link from the actual login page
 				kerbURL, err = ParseKerberosLink(bytes.NewReader(loginBody), authHostname)
-				if err == nil {
-					// Update bodyBytes for any subsequent processing
-					bodyBytes = loginBody
-					_ = loginURL // loginURL might be useful for debugging
-				}
 			}
 		}
 		// If still failing, return the original error
@@ -1131,7 +1147,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently || resp.StatusCode == http.StatusSeeOther {
 			location := resp.Header.Get("Location")
@@ -1158,7 +1174,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	if err != nil {
 		return nil, fmt.Errorf("SPNEGO authentication failed: %w", err)
 	}
-	defer authResp.Body.Close()
+	defer func() { _ = authResp.Body.Close() }()
 
 	// Step 5: Follow redirects within auth hostname or to login completion
 	var redirectURI string
@@ -1193,7 +1209,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			if err != nil {
 				return nil, fmt.Errorf("redirect failed: %w", err)
 			}
-			defer authResp.Body.Close()
+			defer func() { _ = authResp.Body.Close() }()
 			continue
 		}
 
@@ -1281,7 +1297,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				if err != nil {
 					return nil, &LoginError{Message: fmt.Sprintf("failed to submit WebAuthn response: %v", err)}
 				}
-				defer authResp.Body.Close()
+				defer func() { _ = authResp.Body.Close() }()
 				continue
 			}
 
@@ -1318,7 +1334,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				if err != nil {
 					return nil, &LoginError{Message: fmt.Sprintf("failed to submit OTP: %v", err)}
 				}
-				defer otpResp.Body.Close()
+				defer func() { _ = otpResp.Body.Close() }()
 
 				otpBody, _ := io.ReadAll(otpResp.Body)
 				otpBodyStr := string(otpBody)
@@ -1385,7 +1401,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				if err != nil {
 					return nil, fmt.Errorf("form auto-submit failed: %w", err)
 				}
-				defer authResp.Body.Close()
+				defer func() { _ = authResp.Body.Close() }()
 				continue // Process the response from POST (might be another redirect or form)
 			}
 		}
@@ -1403,7 +1419,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 			if err != nil {
 				return nil, fmt.Errorf("SAML POST failed: %w", err)
 			}
-			defer authResp.Body.Close()
+			defer func() { _ = authResp.Body.Close() }()
 			continue
 		}
 
@@ -1453,7 +1469,11 @@ func (k *KerberosClient) CollectCookies(targetURL string, authHostname string, r
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+		}()
 	}
 
 	// Return all cookies collected during the session

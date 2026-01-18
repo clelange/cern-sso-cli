@@ -63,7 +63,11 @@ func DetectHarbor(client *http.Client, targetURL string) (*SPAInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("systeminfo API returned %d", resp.StatusCode)
@@ -81,7 +85,7 @@ func DetectHarbor(client *http.Client, targetURL string) (*SPAInfo, error) {
 
 	// Check if Harbor uses OIDC authentication
 	if info.AuthMode != "oidc_auth" {
-		return nil, fmt.Errorf("Harbor auth_mode is %q, not oidc_auth", info.AuthMode)
+		return nil, fmt.Errorf("harbor auth_mode is %q, not oidc_auth", info.AuthMode)
 	}
 
 	// Harbor with OIDC - we need to construct the OIDC authorization URL
@@ -133,7 +137,7 @@ func GetSPALoginPage(client *http.Client, spaInfo *SPAInfo, authHostname string)
 	case SPATypeHarbor:
 		return getHarborLoginPage(client, spaInfo, authHostname)
 	case SPATypeOpenShift:
-		return getOpenShiftLoginPage(client, spaInfo, authHostname)
+		return getOpenShiftLoginPage(client, spaInfo)
 	default:
 		return "", nil, fmt.Errorf("unknown SPA type: %s", spaInfo.Type)
 	}
@@ -174,7 +178,11 @@ func getHarborLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname stri
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to fetch Harbor login page: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -186,7 +194,7 @@ func getHarborLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname stri
 
 // getOpenShiftLoginPage follows the OpenShift login URL to reach the SSO page.
 // Manually follows redirects since the HTTP client has CheckRedirect disabled.
-func getOpenShiftLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname string) (string, []byte, error) {
+func getOpenShiftLoginPage(client *http.Client, spaInfo *SPAInfo) (string, []byte, error) {
 	if spaInfo.LoginURL == "" {
 		return "", nil, fmt.Errorf("OpenShift loginURL not set")
 	}
@@ -204,7 +212,7 @@ func getOpenShiftLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname s
 		// Check for redirect status codes (301, 302, 303, 307, 308)
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 			location := resp.Header.Get("Location")
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if location == "" {
 				return "", nil, fmt.Errorf("redirect response missing Location header")
 			}
@@ -220,7 +228,7 @@ func getOpenShiftLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname s
 
 		// Not a redirect - read the body
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to read OpenShift login page: %w", err)
 		}

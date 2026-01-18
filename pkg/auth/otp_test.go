@@ -150,8 +150,8 @@ func TestOTPProvider_FlagTakesPrecedence(t *testing.T) {
 
 func TestOTPProvider_EnvVar(t *testing.T) {
 	// Set environment variable
-	os.Setenv(EnvOTP, "333333")
-	defer os.Unsetenv(EnvOTP)
+	_ = os.Setenv(EnvOTP, "333333")
+	defer func() { _ = os.Unsetenv(EnvOTP) }()
 
 	p := &OTPProvider{} // No flags set
 	otp, source, err := p.GetOTP("testuser")
@@ -168,8 +168,8 @@ func TestOTPProvider_EnvVar(t *testing.T) {
 
 func TestOTPProvider_EnvCommand(t *testing.T) {
 	// Set environment variable for command
-	os.Setenv(EnvOTPCommand, "echo 444444")
-	defer os.Unsetenv(EnvOTPCommand)
+	_ = os.Setenv(EnvOTPCommand, "echo 444444")
+	defer func() { _ = os.Unsetenv(EnvOTPCommand) }()
 
 	p := &OTPProvider{} // No flags set
 	otp, source, err := p.GetOTP("testuser")
@@ -186,8 +186,8 @@ func TestOTPProvider_EnvCommand(t *testing.T) {
 
 func TestOTPProvider_FlagOverridesEnv(t *testing.T) {
 	// Set environment variable
-	os.Setenv(EnvOTP, "555555")
-	defer os.Unsetenv(EnvOTP)
+	_ = os.Setenv(EnvOTP, "555555")
+	defer func() { _ = os.Unsetenv(EnvOTP) }()
 
 	// Flag should override env
 	p := &OTPProvider{OTP: "666666"}
@@ -277,9 +277,9 @@ func TestOTPProvider_RefreshOTP_StaticFlagFails(t *testing.T) {
 
 func TestOTPProvider_RefreshOTP_StaticEnvFails(t *testing.T) {
 	// Set static env (not command)
-	os.Setenv(EnvOTP, "123456")
-	os.Unsetenv(EnvOTPCommand)
-	defer os.Unsetenv(EnvOTP)
+	_ = os.Setenv(EnvOTP, "123456")
+	_ = os.Unsetenv(EnvOTPCommand)
+	defer func() { _ = os.Unsetenv(EnvOTP) }()
 
 	p := &OTPProvider{}
 	_, err := p.RefreshOTP("testuser", OTPSourceEnv, 2, 3)
@@ -289,8 +289,8 @@ func TestOTPProvider_RefreshOTP_StaticEnvFails(t *testing.T) {
 }
 
 func TestOTPProvider_RefreshOTP_EnvCommand(t *testing.T) {
-	os.Setenv(EnvOTPCommand, "echo 345678")
-	defer os.Unsetenv(EnvOTPCommand)
+	_ = os.Setenv(EnvOTPCommand, "echo 345678")
+	defer func() { _ = os.Unsetenv(EnvOTPCommand) }()
 
 	p := &OTPProvider{}
 	otp, err := p.RefreshOTP("testuser", OTPSourceEnv, 2, 3)
@@ -316,9 +316,9 @@ func TestIsRefreshable(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		os.Unsetenv(EnvOTPCommand)
+		_ = os.Unsetenv(EnvOTPCommand)
 		if tc.envCmd != "" {
-			os.Setenv(EnvOTPCommand, tc.envCmd)
+			_ = os.Setenv(EnvOTPCommand, tc.envCmd)
 		}
 
 		result := IsRefreshable(tc.source)
@@ -326,5 +326,5 @@ func TestIsRefreshable(t *testing.T) {
 			t.Errorf("IsRefreshable(%q) with envCmd=%q = %v, want %v", tc.source, tc.envCmd, result, tc.refreshable)
 		}
 	}
-	os.Unsetenv(EnvOTPCommand)
+	_ = os.Unsetenv(EnvOTPCommand)
 }

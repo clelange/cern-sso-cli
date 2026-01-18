@@ -1,13 +1,13 @@
 package auth
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -82,7 +82,11 @@ func AuthorizationCodeFlow(kerbClient *KerberosClient, cfg OIDCConfig) (string, 
 	if err != nil {
 		return "", fmt.Errorf("token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if !isSuccessStatus(resp.StatusCode) {
 		return "", fmt.Errorf("token request failed with status: %d", resp.StatusCode)
@@ -97,6 +101,8 @@ func AuthorizationCodeFlow(kerbClient *KerberosClient, cfg OIDCConfig) (string, 
 }
 
 // DeviceAuthorizationFlow performs the OAuth2 Device Authorization Grant flow.
+//
+//nolint:cyclop // OAuth device flow with polling and multiple error conditions
 func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 	// Generate PKCE values
 	codeVerifier := generateCodeVerifier()
@@ -122,7 +128,11 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("device authorization request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if !isSuccessStatus(resp.StatusCode) {
 		return nil, fmt.Errorf("device authorization failed with status: %d", resp.StatusCode)
@@ -187,10 +197,10 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 		if resp.StatusCode == http.StatusOK {
 			var token TokenResponse
 			if err := parseJSONResponse(resp, &token); err != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				return nil, err
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return &token, nil
 		}
 
@@ -200,10 +210,10 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 			ErrorDescription string `json:"error_description"`
 		}
 		if err := parseJSONResponse(resp, &errorResp); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		switch errorResp.Error {
 		case "authorization_pending":
@@ -250,7 +260,11 @@ func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenRespons
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if !isSuccessStatus(resp.StatusCode) {
 		return nil, fmt.Errorf("token exchange failed with status: %d", resp.StatusCode)

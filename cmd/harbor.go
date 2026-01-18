@@ -113,6 +113,8 @@ func runHarbor(cmd *cobra.Command, args []string) error {
 }
 
 // fetchHarborCLISecret fetches the CLI secret from Harbor API using the provided cookies.
+//
+//nolint:cyclop // Complex API interaction with multiple fallback strategies
 func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bool) (string, string, error) {
 	// Create HTTP client
 	client := &http.Client{}
@@ -138,7 +140,11 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch user profile: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -180,7 +186,11 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch CLI secret: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode == http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

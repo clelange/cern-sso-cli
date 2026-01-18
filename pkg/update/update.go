@@ -50,7 +50,11 @@ func CheckForUpdate() (*ReleaseInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
@@ -67,6 +71,8 @@ func CheckForUpdate() (*ReleaseInfo, error) {
 // CompareVersions compares two version strings.
 // Returns: -1 if current < latest, 0 if equal, 1 if current > latest.
 // Handles "dev" as always older than any release version.
+//
+//nolint:cyclop // Version parsing with multiple format handling
 func CompareVersions(current, latest string) int {
 	// Normalise versions by removing 'v' prefix
 	current = strings.TrimPrefix(current, "v")
@@ -96,11 +102,11 @@ func CompareVersions(current, latest string) int {
 		if i < len(currentParts) {
 			// Handle pre-release suffixes like "1.0.0-rc1"
 			part := strings.Split(currentParts[i], "-")[0]
-			fmt.Sscanf(part, "%d", &currentNum)
+			_, _ = fmt.Sscanf(part, "%d", &currentNum)
 		}
 		if i < len(latestParts) {
 			part := strings.Split(latestParts[i], "-")[0]
-			fmt.Sscanf(part, "%d", &latestNum)
+			_, _ = fmt.Sscanf(part, "%d", &latestNum)
 		}
 
 		if currentNum < latestNum {
@@ -160,12 +166,18 @@ func GetAssetForCurrentPlatform(release *ReleaseInfo) (binaryURL, checksumURL st
 }
 
 // DownloadBinary downloads the binary from the given URL.
+//
+//nolint:cyclop // Download with progress tracking and chunked reading
 func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte, error) {
 	resp, err := http.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download binary: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download failed with status %d", resp.StatusCode)
@@ -206,7 +218,11 @@ func FetchChecksums(url string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to download checksums: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("checksums download failed with status %d", resp.StatusCode)
@@ -274,13 +290,13 @@ func ReplaceBinary(newBinary []byte) error {
 	// Clean up temp file on error
 	defer func() {
 		if tmpPath != "" {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
 	// Write new binary
 	if _, err := tmpFile.Write(newBinary); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return fmt.Errorf("failed to write new binary: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {

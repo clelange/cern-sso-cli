@@ -117,6 +117,8 @@ func formatDeviceList(locs []*libfido2.DeviceLocation) string {
 
 // Authenticate performs FIDO2 assertion with the connected device.
 // Returns the assertion data formatted for Keycloak submission.
+//
+//nolint:cyclop // FIDO2 device selection and assertion with multiple fallback paths
 func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, error) {
 	if form == nil {
 		return nil, errors.New("webauthn form is nil")
@@ -132,17 +134,18 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		if p.UseBrowser {
 			return nil, errors.New("no FIDO2 device found, browser fallback requested")
 		}
-		return nil, errors.New("no FIDO2 device found.\n\n" +
-			"Note: This tool only supports USB/NFC security keys (e.g., YubiKey).\n" +
-			"macOS Touch ID and iCloud Keychain passkeys are not supported by libfido2.\n\n" +
-			"Please connect a hardware security key and try again.")
+		return nil, errors.New("no FIDO2 device found\n\n" +
+			"Note: This tool only supports USB/NFC security keys (e.g., YubiKey)\n" +
+			"macOS Touch ID and iCloud Keychain passkeys are not supported by libfido2\n\n" +
+			"Please connect a hardware security key and try again")
 	}
 
 	// Determine which device to use
 	var devicePath string
 	var selectedDevice *libfido2.DeviceLocation
 
-	if p.DevicePath != "" {
+	switch {
+	case p.DevicePath != "":
 		// Explicit path specified
 		devicePath = p.DevicePath
 		// Find matching device for display
@@ -153,18 +156,18 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 			}
 		}
 		if selectedDevice == nil {
-			return nil, fmt.Errorf("specified device path %q not found.\n\n%s",
+			return nil, fmt.Errorf("specified device path %q not found\n\n%s",
 				p.DevicePath, formatDeviceList(locs))
 		}
-	} else if p.DeviceIndex >= 0 {
+	case p.DeviceIndex >= 0:
 		// Index-based selection
 		if p.DeviceIndex >= len(locs) {
-			return nil, fmt.Errorf("device index %d out of range (0-%d).\n\n%s",
+			return nil, fmt.Errorf("device index %d out of range (0-%d)\n\n%s",
 				p.DeviceIndex, len(locs)-1, formatDeviceList(locs))
 		}
 		selectedDevice = locs[p.DeviceIndex]
 		devicePath = selectedDevice.Path
-	} else {
+	default:
 		// Auto-detect: use first device, but warn if multiple available
 		selectedDevice = locs[0]
 		devicePath = selectedDevice.Path
@@ -273,17 +276,17 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	case <-sigChan:
 		fmt.Fprintln(os.Stderr, "\nInterrupted. Closing device...")
 		// Cancel the device operation by closing it
-		device.Cancel()
+		_ = device.Cancel()
 		return nil, fmt.Errorf("operation cancelled by user")
 	}
 
 	if err != nil {
 		// If assertion failed without credential IDs, suggest browser fallback
 		if len(credentialIDs) == 0 {
-			return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w.\n\n"+
-				"This device may not have credentials registered for %s.\n"+
+			return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w\n\n"+
+				"This device may not have credentials registered for %s\n"+
 				"If your passkey is stored elsewhere (e.g., iCloud Keychain, another security key),\n"+
-				"try using --browser for browser-based authentication.", devicePath, err, form.RPID)
+				"try using --browser for browser-based authentication", devicePath, err, form.RPID)
 		}
 		return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w", devicePath, err)
 	}

@@ -44,7 +44,7 @@ func TestLoadKrb5Config_CustomPath(t *testing.T) {
         kdc = kdc.test.realm
     }
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
@@ -77,14 +77,14 @@ func TestLoadKrb5Config_System(t *testing.T) {
         kdc = kdc.system.test
     }
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
 	}
 
 	// Set KRB5_CONFIG environment variable
 	oldVal := os.Getenv("KRB5_CONFIG")
-	os.Setenv("KRB5_CONFIG", configPath)
-	defer os.Setenv("KRB5_CONFIG", oldVal)
+	_ = os.Setenv("KRB5_CONFIG", configPath)
+	defer func() { _ = os.Setenv("KRB5_CONFIG", oldVal) }()
 
 	cfg, err := LoadKrb5Config(Krb5ConfigSystem)
 	if err != nil {
@@ -97,14 +97,14 @@ func TestLoadKrb5Config_System(t *testing.T) {
 
 func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB5_USERNAME", "test")
-	os.Setenv("KRB5_PASSWORD", "test")
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
+	_ = os.Setenv("KRB5_USERNAME", "test")
+	_ = os.Setenv("KRB5_PASSWORD", "test")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
+	kc, _ := newTestKerberosClient(cl, true)
 
 	result, err := kc.TryLoginWithCookies("https://example.com", "auth.example.com", nil)
 
@@ -118,14 +118,14 @@ func TestTryLoginWithCookies_NoCookies(t *testing.T) {
 
 func TestTryLoginWithCookies_InvalidRedirect(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB5_USERNAME", "test")
-	os.Setenv("KRB5_PASSWORD", "test")
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
+	_ = os.Setenv("KRB5_USERNAME", "test")
+	_ = os.Setenv("KRB5_PASSWORD", "test")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
+	kc, _ := newTestKerberosClient(cl, true)
 
 	// Create a mock server that redirects to auth (simulating invalid cookies)
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,19 +146,19 @@ func TestTryLoginWithCookies_InvalidRedirect(t *testing.T) {
 
 func TestTryLoginWithCookies_Success(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB5_USERNAME", "test")
-	os.Setenv("KRB5_PASSWORD", "test")
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
+	_ = os.Setenv("KRB5_USERNAME", "test")
+	_ = os.Setenv("KRB5_PASSWORD", "test")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
+	kc, _ := newTestKerberosClient(cl, true)
 
 	// Create a mock server that returns success (valid cookies)
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Success"))
+		_, _ = w.Write([]byte("Success"))
 	}))
 	defer targetServer.Close()
 
@@ -182,14 +182,14 @@ func loadTestKrb5Config() (*config.Config, error) {
 
 func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB5_USERNAME", "test")
-	os.Setenv("KRB5_PASSWORD", "test")
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
+	_ = os.Setenv("KRB5_USERNAME", "test")
+	_ = os.Setenv("KRB5_PASSWORD", "test")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
+	kc, _ := newTestKerberosClient(cl, true)
 
 	// Create a mock server that verifies cookies are received
 	cookiesReceived := make([]string, 0)
@@ -199,7 +199,7 @@ func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 			cookiesReceived = append(cookiesReceived, cookie.Name)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Success"))
+		_, _ = w.Write([]byte("Success"))
 	}))
 	defer targetServer.Close()
 
@@ -242,19 +242,19 @@ func TestTryLoginWithCookies_VerifiesCookiesSent(t *testing.T) {
 
 func TestTryLoginWithCookies_DomainFixing(t *testing.T) {
 	// Set up credentials for the test
-	os.Setenv("KRB5_USERNAME", "test")
-	os.Setenv("KRB5_PASSWORD", "test")
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
+	_ = os.Setenv("KRB5_USERNAME", "test")
+	_ = os.Setenv("KRB5_PASSWORD", "test")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
 
 	cfg, _ := loadTestKrb5Config()
 	cl := client.NewWithPassword("test", "CERN.CH", "test", cfg, client.DisablePAFXFAST(true))
-	kc, _ := newKerberosClientFromKrbClient(cl, "test", true)
+	kc, _ := newTestKerberosClient(cl, true)
 
 	// Create a mock server
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Success"))
+		_, _ = w.Write([]byte("Success"))
 	}))
 	defer targetServer.Close()
 

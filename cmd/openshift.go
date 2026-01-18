@@ -60,6 +60,7 @@ func init() {
 	openshiftCmd.Flags().BoolVar(&openshiftLoginCmd, "login-command", false, "Output full oc login command instead of just the token")
 }
 
+//nolint:cyclop // OpenShift OAuth authentication requires multiple steps
 func runOpenShift(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
 	if err := ValidateMethodFlags(); err != nil {
@@ -115,7 +116,8 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	}
 
 	// Output
-	if openshiftJSON {
+	switch {
+	case openshiftJSON:
 		output := OpenShiftLoginOutput{
 			Command: loginCmd,
 			Token:   token,
@@ -123,9 +125,9 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 		}
 		data, _ := json.Marshal(output)
 		fmt.Println(string(data))
-	} else if openshiftLoginCmd {
+	case openshiftLoginCmd:
 		fmt.Println(loginCmd)
-	} else {
+	default:
 		fmt.Println(token)
 	}
 
@@ -133,6 +135,8 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 }
 
 // fetchOpenShiftLoginCommand fetches the oc login command from OpenShift token request page.
+//
+//nolint:cyclop // Complex form parsing and submission flow
 func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http.Cookie, verifyCerts bool) (string, string, string, error) {
 	// Create HTTP client with cookie jar
 	jar, err := cookiejar.New(nil)
@@ -165,7 +169,7 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch token request page: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -227,7 +231,11 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to submit form: %w", err)
 	}
-	defer formResp.Body.Close()
+	defer func() {
+		if formResp != nil && formResp.Body != nil {
+			_ = formResp.Body.Close()
+		}
+	}()
 
 	if formResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(formResp.Body)
@@ -253,15 +261,9 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	return loginCmd, token, server, nil
 }
 
-// truncateString truncates a string to maxLen characters.
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
-
 // parseTokenFromPage extracts the oc login command from an HTML document.
+//
+//nolint:cyclop // Multiple parsing strategies for different page layouts
 func parseTokenFromPage(doc *goquery.Document, clusterURL string) (loginCmd, token, server string) {
 	// Strategy 1: Look for pre element containing "oc login" (the actual displayed command)
 	doc.Find("pre").Each(func(_ int, s *goquery.Selection) {

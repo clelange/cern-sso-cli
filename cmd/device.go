@@ -47,7 +47,7 @@ func init() {
 	deviceCmd.Flags().BoolVarP(&deviceInsecure, "insecure", "k", false, "Skip certificate validation")
 	deviceCmd.Flags().BoolVar(&deviceJSON, "json", false, "Output result as JSON")
 
-	deviceCmd.MarkFlagRequired("client-id")
+	_ = deviceCmd.MarkFlagRequired("client-id")
 }
 
 func runDevice(cmd *cobra.Command, args []string) error {

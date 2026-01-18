@@ -56,7 +56,7 @@ func TestDetectHarbor(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/v2.0/systeminfo" {
 					w.WriteHeader(tt.responseStatus)
-					w.Write([]byte(tt.responseBody))
+					_, _ = w.Write([]byte(tt.responseBody))
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -166,10 +166,10 @@ func TestDetectSPA(t *testing.T) {
 	t.Run("Detects Harbor via API", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v2.0/systeminfo" {
-				w.Write([]byte(`{"auth_mode":"oidc_auth","harbor_version":"v2.12.2"}`))
+				_, _ = w.Write([]byte(`{"auth_mode":"oidc_auth","harbor_version":"v2.12.2"}`))
 			} else {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`<html><body>Loading...</body></html>`))
+				_, _ = w.Write([]byte(`<html><body>Loading...</body></html>`))
 			}
 		}))
 		defer server.Close()

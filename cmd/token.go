@@ -46,8 +46,8 @@ func init() {
 	tokenCmd.Flags().BoolVarP(&tokenInsecure, "insecure", "k", false, "Skip certificate validation")
 	tokenCmd.Flags().BoolVar(&tokenJSON, "json", false, "Output result as JSON")
 
-	tokenCmd.MarkFlagRequired("url")
-	tokenCmd.MarkFlagRequired("client-id")
+	_ = tokenCmd.MarkFlagRequired("url")
+	_ = tokenCmd.MarkFlagRequired("client-id")
 }
 
 func runToken(cmd *cobra.Command, args []string) error {

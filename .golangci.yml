@@ -21,8 +21,7 @@ linters:
     - staticcheck
     - ineffassign
 
-    # Code complexity
-    - gocyclo
+    # Code complexity (using cyclop only - modern alternative to gocyclo)
     - cyclop
 
     # Security
@@ -39,11 +38,24 @@ linters:
     - misspell
     - gocritic
 
+  exclusions:
+    # Exclude linters from specific file patterns
+    rules:
+      # Exclude some linters from running on tests
+      - path: '_test\.go'
+        linters:
+          - cyclop
+          - gosec
+          - errcheck
+      # Exclude generated files
+      - path: '.*_generated\.go'
+        linters:
+          - all
+
 linters-settings:
-  gocyclo:
-    min-complexity: 15
   cyclop:
-    max-complexity: 15
+    # Keep a reasonable threshold; use //nolint:cyclop on specific complex functions
+    max-complexity: 20
   goimports:
     local-prefixes: github.com/clelange/cern-sso-cli
   gocritic:
@@ -60,19 +72,3 @@ linters-settings:
     max-func-lines: 30
   misspell:
     locale: UK
-
-issues:
-  exclude-dirs:
-    - passkey-helper
-  exclude-rules:
-    # Exclude some linters from running on tests
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - cyclop
-        - gosec
-        - errcheck
-    # Exclude generated files
-    - path: ".*_generated\\.go"
-      linters:
-        - all

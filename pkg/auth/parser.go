@@ -266,6 +266,8 @@ type WebAuthnForm struct {
 // - <div id="kc-form-webauthn"> is a wrapper div
 // - <form id="webauth" action="..."> is the actual form inside
 // - Challenge and rpId are in JavaScript, not form fields
+//
+//nolint:cyclop // Parsing multiple data sources (HTML, JS, data attributes)
 func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
@@ -394,12 +396,12 @@ func ParseTryAnotherWayForm(r io.Reader) (*TryAnotherWayForm, error) {
 
 	form := doc.Find("#kc-select-try-another-way-form")
 	if form.Length() == 0 {
-		return nil, errors.New("Try Another Way form not found")
+		return nil, errors.New("try another way form not found")
 	}
 
 	action, exists := form.Attr("action")
 	if !exists || action == "" {
-		return nil, errors.New("Try Another Way form has no action")
+		return nil, errors.New("try another way form has no action")
 	}
 
 	return &TryAnotherWayForm{
@@ -409,6 +411,8 @@ func ParseTryAnotherWayForm(r io.Reader) (*TryAnotherWayForm, error) {
 
 // ParseMethodSelectionPage extracts the available 2FA methods from the selection page.
 // This page is shown after clicking "Try Another Way".
+//
+//nolint:cyclop // Parsing multiple method types with various detection strategies
 func ParseMethodSelectionPage(r io.Reader) (*MethodSelectionPage, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {

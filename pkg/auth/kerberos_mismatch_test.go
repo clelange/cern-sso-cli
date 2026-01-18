@@ -8,16 +8,16 @@ import (
 
 func TestNewKerberosClient_UserMismatch_SkipsPassword(t *testing.T) {
 	// Set up environment with credentials for User A
-	os.Setenv("KRB5_USERNAME", "userA")
-	os.Setenv("KRB5_PASSWORD", "passwordA")
+	_ = os.Setenv("KRB5_USERNAME", "userA")
+	_ = os.Setenv("KRB5_PASSWORD", "passwordA")
 	// Ensure no ccache or keytab is picked up
-	os.Setenv("KRB5CCNAME", "/nonexistent/file")
-	os.Setenv("KRB5_KTNAME", "/nonexistent/file")
+	_ = os.Setenv("KRB5CCNAME", "/nonexistent/file")
+	_ = os.Setenv("KRB5_KTNAME", "/nonexistent/file")
 
-	defer os.Unsetenv("KRB5_USERNAME")
-	defer os.Unsetenv("KRB5_PASSWORD")
-	defer os.Unsetenv("KRB5CCNAME")
-	defer os.Unsetenv("KRB5_KTNAME")
+	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
+	defer func() { _ = os.Unsetenv("KRB5CCNAME") }()
+	defer func() { _ = os.Unsetenv("KRB5_KTNAME") }()
 
 	// Attempt to authenticate as User B
 	// This should NOT use passwordA.

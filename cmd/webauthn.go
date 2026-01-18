@@ -47,11 +47,11 @@ macOS Touch ID and iCloud Keychain passkeys are not detected by this tool.`,
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "INDEX\tPRODUCT\tPATH")
+		_, _ = fmt.Fprintln(w, "INDEX\tPRODUCT\tPATH")
 		for _, d := range devices {
-			fmt.Fprintf(w, "%d\t%s\t%s\n", d.Index, d.Product, d.Path)
+			_, _ = fmt.Fprintf(w, "%d\t%s\t%s\n", d.Index, d.Product, d.Path)
 		}
-		w.Flush()
+		_ = w.Flush()
 
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Use --webauthn-device-index <INDEX> to select a specific device.")

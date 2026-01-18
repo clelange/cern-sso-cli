@@ -38,11 +38,15 @@ repos:
       - id: go-build-mod
 
   # Go linting with golangci-lint
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.0.2
+  - repo: local
     hooks:
       - id: golangci-lint
-        args: ['--timeout=5m']
+        name: golangci-lint
+        entry: golangci-lint
+        args: ['run', '--timeout=5m', './...']
+        language: system
+        pass_filenames: false
+        types: [go]
 
   # Security scanning (local hook - requires gosec installed)
   - repo: local

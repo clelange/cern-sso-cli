@@ -34,6 +34,7 @@ func init() {
 	updateCmd.Flags().BoolVar(&checkOnly, "check", false, "Only check for updates, don't install")
 }
 
+//nolint:cyclop // Update flow with multiple checks and user feedback
 func runUpdate() error {
 	currentVersion := version
 

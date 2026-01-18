@@ -136,7 +136,7 @@ func TestJar_SaveAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cookieFile := filepath.Join(tmpDir, "cookies.txt")
 	domain := "example.com"

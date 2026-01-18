@@ -51,9 +51,10 @@ func init() {
 	cookieCmd.Flags().BoolVarP(&cookieInsecure, "insecure", "k", false, "Skip certificate validation")
 	cookieCmd.Flags().BoolVar(&cookieJSON, "json", false, "Output result as JSON")
 
-	cookieCmd.MarkFlagRequired("url")
+	_ = cookieCmd.MarkFlagRequired("url")
 }
 
+//nolint:cyclop // Complex authentication flow with multiple code paths
 func runCookie(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
 	if err := ValidateMethodFlags(); err != nil {

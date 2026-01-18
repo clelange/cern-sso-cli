@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -89,7 +90,8 @@ func executeOTPCommand(command string) (string, error) {
 	cmd := exec.Command("sh", "-c", command)
 	output, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			return "", fmt.Errorf("command exited with status %d: %s", exitErr.ExitCode(), string(exitErr.Stderr))
 		}
 		return "", err

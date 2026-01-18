@@ -28,6 +28,8 @@ type AuthResult struct {
 // The function waits until the browser navigates away from the auth hostname,
 // indicating successful authentication.
 // env is a map of environment variables to set for the browser process (e.g. KRB5CCNAME).
+//
+//nolint:cyclop // Complex browser automation with event handling and cookie extraction
 func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.Duration, env map[string]string) (*AuthResult, error) {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

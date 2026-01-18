@@ -37,9 +37,11 @@ func PrintStatus(cookies []*http.Cookie, asJSON bool, verified bool, verifiedVal
 }
 
 // printStatusTable displays cookies in a formatted table.
+//
+//nolint:cyclop // Table formatting with multiple cookie state calculations
 func printStatusTable(cookies []*http.Cookie, verified bool, verifiedValid bool, w io.Writer) {
 	if len(cookies) == 0 {
-		fmt.Fprintln(w, "No cookies found.")
+		_, _ = fmt.Fprintln(w, "No cookies found.")
 		return
 	}
 
@@ -55,40 +57,42 @@ func printStatusTable(cookies []*http.Cookie, verified bool, verifiedValid bool,
 		return domainI < domainJ
 	})
 
-	fmt.Fprintln(w, "Cookie Status:")
+	_, _ = fmt.Fprintln(w, "Cookie Status:")
 	if verified {
 		if verifiedValid {
-			fmt.Fprintln(w, "Verification: ✓ Cookies verified by HTTP request")
+			_, _ = fmt.Fprintln(w, "Verification: ✓ Cookies verified by HTTP request")
 		} else {
-			fmt.Fprintln(w, "Verification: ✗ Cookies failed HTTP verification")
+			_, _ = fmt.Fprintln(w, "Verification: ✗ Cookies failed HTTP verification")
 		}
 	} else {
-		fmt.Fprintln(w, "Note: Only checking expiry times (use --url to verify with HTTP request)")
+		_, _ = fmt.Fprintln(w, "Note: Only checking expiry times (use --url to verify with HTTP request)")
 	}
-	fmt.Fprintln(w, "")
-	fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n", "Name", "Domain", "Path", "Expires", "Status")
-	fmt.Fprintln(w, strings.Repeat("-", 104))
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n", "Name", "Domain", "Path", "Expires", "Status")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", 104))
 
 	now := time.Now()
 	for _, c := range cookies {
 		var expiresStr, status string
 
-		if c.Expires.IsZero() || c.Expires.Unix() <= 0 {
+		switch {
+		case c.Expires.IsZero() || c.Expires.Unix() <= 0:
 			expiresStr = "Session"
 			status = "Session"
-		} else if c.Expires.Before(now) {
+		case c.Expires.Before(now):
 			expiresStr = c.Expires.Format("2006-01-02 15:04:05")
 			status = "✗ Expired"
-		} else {
+		default:
 			expiresStr = c.Expires.Format("2006-01-02 15:04:05")
 			remaining := c.Expires.Sub(now)
-			if remaining < time.Minute {
+			switch {
+			case remaining < time.Minute:
 				status = fmt.Sprintf("✓ %ds", int(remaining.Seconds()))
-			} else if remaining < time.Hour {
+			case remaining < time.Hour:
 				status = fmt.Sprintf("✓ %dm", int(remaining.Minutes()))
-			} else if remaining < 24*time.Hour {
+			case remaining < 24*time.Hour:
 				status = fmt.Sprintf("✓ %dh", int(remaining.Hours()))
-			} else {
+			default:
 				status = fmt.Sprintf("✓ %dd", int(remaining.Hours()/24))
 			}
 		}
@@ -110,7 +114,7 @@ func printStatusTable(cookies []*http.Cookie, verified bool, verifiedValid bool,
 			domain = "<no domain>"
 		}
 
-		fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n",
+		_, _ = fmt.Fprintf(w, "%-32s %-20s %-22s %-20s %-10s\n",
 			truncateString(c.Name, 32), domain, truncateString(c.Path, 22), expiresStr, status+" "+flagStr)
 	}
 }
@@ -139,16 +143,17 @@ func printStatusJSON(cookies []*http.Cookie, verified bool, verifiedValid bool, 
 		var remainingSeconds float64
 		var expires *string
 
-		if c.Expires.IsZero() || c.Expires.Unix() <= 0 {
+		switch {
+		case c.Expires.IsZero() || c.Expires.Unix() <= 0:
 			status = "session"
 			remainingSeconds = 0
 			expires = nil
-		} else if c.Expires.Before(now) {
+		case c.Expires.Before(now):
 			status = "expired"
 			remainingSeconds = 0
 			expiresStr := c.Expires.Format(time.RFC3339)
 			expires = &expiresStr
-		} else {
+		default:
 			status = "valid"
 			remainingSeconds = c.Expires.Sub(now).Seconds()
 			expiresStr := c.Expires.Format(time.RFC3339)
@@ -171,5 +176,5 @@ func printStatusJSON(cookies []*http.Cookie, verified bool, verifiedValid bool, 
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.Encode(result)
+	_ = enc.Encode(result)
 }
