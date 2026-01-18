@@ -4,10 +4,10 @@
 # Setup: pre-commit install (or prek install)
 
 # Configuration for pre-commit.ci service
-# Skip hooks that require system binaries not available in the pre-commit.ci environment
+# Skip hooks that require Go tooling or system binaries not available in the pre-commit.ci environment
 # These are run by the separate GitHub Actions workflow (pre-commit.yml) instead
 ci:
-  skip: [golangci-lint, gosec]
+  skip: [go-imports, go-mod-tidy, go-vet-mod, go-build-mod, golangci-lint, gosec]
 
 repos:
   # General file hygiene
