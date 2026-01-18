@@ -3,6 +3,12 @@
 # Install: pip install pre-commit OR cargo install prek
 # Setup: pre-commit install (or prek install)
 
+# Configuration for pre-commit.ci service
+# Skip hooks that require system binaries not available in the pre-commit.ci environment
+# These are run by the separate GitHub Actions workflow (pre-commit.yml) instead
+ci:
+  skip: [golangci-lint, gosec]
+
 repos:
   # General file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
