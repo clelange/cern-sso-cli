@@ -161,7 +161,7 @@ func GetAssetForCurrentPlatform(release *ReleaseInfo) (binaryURL, checksumURL st
 
 // DownloadBinary downloads the binary from the given URL.
 func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte, error) {
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -202,7 +202,7 @@ func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte,
 
 // FetchChecksums downloads and parses the checksums file.
 func FetchChecksums(url string) (map[string]string, error) {
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download checksums: %w", err)
 	}

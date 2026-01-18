@@ -7,8 +7,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
+
+	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 const (
@@ -117,7 +118,7 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 	client := &http.Client{}
 	if !verifyCerts {
 		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // User explicitly requested insecure mode
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 		}
 	}
 

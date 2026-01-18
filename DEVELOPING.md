@@ -14,19 +14,35 @@ This project uses [pre-commit](https://pre-commit.com) hooks to ensure code qual
 
 ### Installation
 
+#### macOS
+
 ```bash
-# Install prek (recommended - faster, single binary)
-cargo install prek
+# Install required tools
+brew install golangci-lint gosec
+go install golang.org/x/tools/cmd/goimports@latest
 
-# Or install pre-commit (Python-based)
-pip install pre-commit
+# Install hook runner (prek is recommended)
+cargo install prek     # Rust-based (faster)
+# OR
+pip install pre-commit # Python-based
+```
 
-# Install golangci-lint (required for lint hooks)
-# macOS
-brew install golangci-lint
+#### Linux
 
-# Linux
+```bash
+# Install golangci-lint
 curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+
+# Install gosec
+curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+
+# Install goimports
+go install golang.org/x/tools/cmd/goimports@latest
+
+# Install hook runner (prek is recommended)
+cargo install prek     # Rust-based (faster)
+# OR
+pip install pre-commit # Python-based
 ```
 
 ### Setup
@@ -147,10 +163,20 @@ export KRB5_PASSWORD='your-password'
 make test-integration
 ```
 
-The integration tests verify cookie generation and authentication against:
-- account.web.cern.ch
-- gitlab.cern.ch
-- account.web.cern.ch
+The integration tests verify:
+- Kerberos authentication flow
+- Cookie generation and management
+- Multi-domain cookie handling
+- Authorization Code Flow (OIDC)
+- SPA fallback mechanisms (Harbor, OpenShift)
+- CLI secret extraction (Harbor)
+- Token retrieval (OpenShift)
+
+**Verified services:**
+- `account.web.cern.ch` (Standard SSO)
+- `gitlab.cern.ch` (Standard SSO)
+- `paas.cern.ch` (OpenShift - SPA)
+- `registry.cern.ch` (Harbor - SPA/OIDC)
 
 ### Testing Browser Authentication
 

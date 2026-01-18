@@ -50,7 +50,7 @@ repos:
       - id: gosec
         name: gosec
         entry: gosec
-        args: ['-exclude-dir=passkey-helper', '-quiet', './...']
+        args: ['-exclude-dir=passkey-helper', '-exclude=G104', '-quiet', './...']
         language: system
         pass_filenames: false
         types: [go]

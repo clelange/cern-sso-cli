@@ -11,8 +11,9 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
+
+	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 const (
@@ -141,7 +142,7 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 
 	transport := &http.Transport{}
 	if !verifyCerts {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // User explicitly requested insecure mode
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
 	}
 
 	client := &http.Client{

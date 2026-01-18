@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/spf13/cobra"
+
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/clelange/cern-sso-cli/pkg/cookie"
-	"github.com/spf13/cobra"
 )
 
 var (

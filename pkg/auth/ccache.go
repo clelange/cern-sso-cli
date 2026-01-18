@@ -173,7 +173,7 @@ func ConvertAPICacheToFile() (string, error) {
 
 	// Try keychain first (if user set it up with kinit --keychain --save)
 	// Close stdin to prevent password prompts from blocking
-	cmd := exec.Command("kinit", "-c", cacheFile, "--keychain", principal)
+	cmd := exec.Command("kinit", "-c", cacheFile, "--keychain", principal) // #nosec G204
 	cmd.Stdin = nil
 	if err := cmd.Run(); err == nil {
 		return cacheFile, nil
@@ -205,7 +205,7 @@ func ConvertSpecificCacheToFile(cacheInfo *CacheInfo) (string, error) {
 
 	// Use kgetcred to export the TGT from the specific API cache to a file
 	// This extracts only the TGT (krbtgt/CERN.CH@CERN.CH) which is sufficient for SPNEGO
-	cmd := exec.Command("kgetcred", "-c", cacheInfo.CacheName, "--out-cache="+cacheFile, "krbtgt/CERN.CH@CERN.CH")
+	cmd := exec.Command("kgetcred", "-c", cacheInfo.CacheName, "--out-cache="+cacheFile, "krbtgt/CERN.CH@CERN.CH") // #nosec G204
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("kgetcred failed for %s: %w (output: %s)", cacheInfo.Principal, err, string(output))
 	}

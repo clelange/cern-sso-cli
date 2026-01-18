@@ -9,8 +9,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
+
+	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 // webauthnCmd represents the webauthn command group.

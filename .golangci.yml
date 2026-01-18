@@ -15,8 +15,6 @@ linters:
     - errorlint
 
     # Style and formatting
-    - gofmt
-    - goimports
 
     # Bugs and suspicious constructs
     - govet

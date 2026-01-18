@@ -6,8 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/spf13/cobra"
+
+	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 const (

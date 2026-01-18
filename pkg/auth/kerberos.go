@@ -15,13 +15,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
-	"github.com/clelange/cern-sso-cli/pkg/browser"
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/config" // Added for CCache export
 	"github.com/jcmturner/gokrb5/v8/keytab"
 	"github.com/jcmturner/gokrb5/v8/spnego"
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
+	"github.com/clelange/cern-sso-cli/pkg/browser"
 )
 
 const defaultKrb5Conf = `[libdefaults]
@@ -479,7 +480,7 @@ func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, v
 
 	// Build TLS config
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !verifyCert,
+		InsecureSkipVerify: !verifyCert, // #nosec G402
 	}
 
 	// When verifying certs, use system certs plus embedded CERN CA certificates

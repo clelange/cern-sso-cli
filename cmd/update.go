@@ -6,8 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/clelange/cern-sso-cli/pkg/update"
 	"github.com/spf13/cobra"
+
+	"github.com/clelange/cern-sso-cli/pkg/update"
 )
 
 var checkOnly bool

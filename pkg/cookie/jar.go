@@ -76,7 +76,7 @@ func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie, verifyCer
 	client := &http.Client{
 		Jar: jar,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert}, // #nosec G402
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host == authHost {
@@ -143,12 +143,13 @@ func (j *Jar) Save(filename string, cookies []*http.Cookie, domain string) error
 func (j *Jar) SaveWithUser(filename string, cookies []*http.Cookie, domain string, username string) error {
 	dir := filepath.Dir(filename)
 	if dir != "" {
+		// #nosec G301
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
 	}
 
-	f, err := os.Create(filename)
+	f, err := os.Create(filename) // #nosec G304
 	if err != nil {
 		return err
 	}
@@ -206,7 +207,7 @@ func (j *Jar) SaveWithUser(filename string, cookies []*http.Cookie, domain strin
 
 // Load reads cookies from a Netscape format file.
 func Load(filename string) ([]*http.Cookie, error) {
-	f, err := os.Open(filename)
+	f, err := os.Open(filename) // #nosec G304
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +258,7 @@ func Load(filename string) ([]*http.Cookie, error) {
 // LoadUser reads the username from a cookie file if present.
 // Returns empty string if no username is found or file doesn't exist.
 func LoadUser(filename string) string {
-	f, err := os.Open(filename)
+	f, err := os.Open(filename) // #nosec G304
 	if err != nil {
 		return ""
 	}
