@@ -49,6 +49,7 @@ pip install pre-commit # Python-based
 
 ```bash
 # Install the git hooks
+make download-certs # Download required certificates (needed for linting)
 prek install        # or: pre-commit install
 prek install --hook-type commit-msg  # Enable conventional commit checks
 ```
