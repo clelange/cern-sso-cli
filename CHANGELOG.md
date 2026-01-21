@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0](https://github.com/clelange/cern-sso-cli/compare/v0.27.2...v0.28.0) (2026-01-21)
+
+
+### Features
+
+* embed CERN CA certificates and add verification ([79f3ed8](https://github.com/clelange/cern-sso-cli/commit/79f3ed8c5bae5f565bafa986d588edef9071b038))
+
+
+### Bug Fixes
+
+* normalize CERN CA certificate line endings to LF ([690b0fd](https://github.com/clelange/cern-sso-cli/commit/690b0fd532120780dc5204363b637f65f4916c0a))
+
 ## [0.27.2](https://github.com/clelange/cern-sso-cli/compare/v0.27.1...v0.27.2) (2026-01-18)
 
 
