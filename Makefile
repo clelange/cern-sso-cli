@@ -6,7 +6,7 @@ IMAGE_NAME ?= cern-sso-cli
 
 LDFLAGS = -X main.version=$(VERSION)
 
-.PHONY: all build build-no-webauthn clean test-integration lint build-all build-no-webauthn download-certs docker-build docker-push
+.PHONY: all build build-no-webauthn clean test-integration lint build-all build-no-webauthn download-certs check-certs docker-build docker-push
 
 all: build
 
@@ -36,6 +36,10 @@ clean:
 # Download CERN CA certificates for embedding
 download-certs:
 	./scripts/download_certs.sh
+
+# Check if local certificates match CERN CA website
+check-certs:
+	./scripts/check_certs.sh
 
 # Cross-platform builds without WebAuthn (portable, no libfido2 dependency)
 build-all: download-certs build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64

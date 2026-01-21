@@ -26,6 +26,9 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Check CERN CA certificates are up to date
+      run: make check-certs
+
     - name: Download CERN CA certificates
       run: make download-certs
 

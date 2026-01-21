@@ -15,8 +15,5 @@ cookies.txt
 # OS
 .DS_Store
 
-# Downloaded CERN CA certificates (downloaded at build time, not stored in git)
-pkg/auth/certs/*.pem
-
 # Passkey helper build artifacts
 passkey-helper/.build/

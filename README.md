@@ -392,6 +392,38 @@ cern-sso-cli update
 
 **Note**: If installed via Homebrew, the command will suggest using `brew upgrade` instead.
 
+## Certificate Management
+
+CERN CA certificates are embedded in the binary for secure certificate validation.
+
+### Checking Certificate Freshness
+
+To verify that your local certificates match the current ones on CERN CA website:
+
+```bash
+make check-certs
+```
+
+or
+
+```bash
+./scripts/check_certs.sh
+```
+
+The script compares SHA256 fingerprints and prints certificate validity information.
+
+### Updating Certificates
+
+If certificates are out of date, update them:
+
+```bash
+./scripts/download_certs.sh
+git add pkg/auth/certs/*.pem
+git commit -m "Update CERN CA certificates"
+```
+
+Certificates are checked automatically in CI on every push/PR to prevent committing outdated certificates.
+
 ## Container Support
 
 Run via Docker:

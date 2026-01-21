@@ -1,0 +1,72 @@
+name: Check CERN Certificates
+
+on:
+  schedule:
+    # Run every Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-certs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Check certificate freshness
+      id: check-certs
+      run: |
+        chmod +x ./scripts/check_certs.sh
+        ./scripts/check_certs.sh
+      continue-on-error: true
+
+    - name: Fail if certificates are out of date
+      if: steps.check-certs.outcome == 'failure'
+      run: |
+        echo "::error::CERN CA certificates are out of date!"
+        echo "Please run: ./scripts/download_certs.sh"
+        exit 1
+
+    - name: Create GitHub issue on mismatch (scheduled runs only)
+      if: |
+        failure() &&
+        github.event_name == 'schedule'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'CERN CA certificates are out of date',
+            body: `The local CERN CA certificates in \`pkg/auth/certs/\` do not match the current certificates on the CERN CA website.
+
+          ## Update Instructions
+
+          1. Download fresh certificates:
+             \`\`\`bash
+             ./scripts/download_certs.sh
+             \`\`\`
+
+          2. Verify the update:
+             \`\`\`bash
+             ./scripts/check_certs.sh
+             \`\`\`
+
+          3. Commit the changes:
+             \`\`\`bash
+             git add pkg/auth/certs/*.pem
+             git commit -m "Update CERN CA certificates"
+             \`\`\`
+
+          ## Details
+
+          This issue was automatically created by the GitHub Actions workflow \`.github/workflows/check-certs.yml\`.
+
+          **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Scheduled run:** ${{ github.event.schedule }}
+          `,
+            labels: ['certificate', 'automated']
+          })

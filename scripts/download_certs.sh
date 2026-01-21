@@ -1,6 +1,6 @@
 #!/bin/sh
 # Downloads CERN CA certificates for embedding in the binary.
-# These certificates are NOT stored in git, but downloaded during build.
+# Run this script to update outdated certificates, then commit the changes.
 #
 # Certificates:
 # - CERN Root Certification Authority 2 (DER format, converted to PEM)
