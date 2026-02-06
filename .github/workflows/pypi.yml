@@ -1,9 +1,9 @@
-name: Publish to TestPyPI
+name: Publish to PyPI
 
 on:
   push:
     tags:
-      - "v*-*"
+      - "v*"
 
 jobs:
   publish:
@@ -53,7 +53,5 @@ jobs:
             --url "https://github.com/clelange/cern-sso-cli" \
             --readme README.md
 
-      - name: Publish to TestPyPI
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
