@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/clelange/cern-sso-cli/compare/v0.28.0...v0.29.0) (2026-02-06)
+
+
+### Features
+
+* add testpypi publish workflow ([6b258b3](https://github.com/clelange/cern-sso-cli/commit/6b258b3b0479b668aaf66b330b51e5598110bea4))
+
 ## [0.28.0](https://github.com/clelange/cern-sso-cli/compare/v0.27.2...v0.28.0) (2026-01-21)
 
 
