@@ -1,0 +1,59 @@
+name: Publish to TestPyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install go-to-wheel
+        run: python -m pip install --upgrade pip go-to-wheel
+
+      - name: Download CERN CA certificates
+        run: make download-certs
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build wheels
+        env:
+          CGO_ENABLED: "0"
+          GOFLAGS: "-tags=nowebauthn"
+        run: |
+          go-to-wheel . \
+            --name cern-sso-cli \
+            --entry-point cern-sso-cli \
+            --version "${{ steps.version.outputs.version }}" \
+            --set-version-var main.version \
+            --platforms linux-amd64,linux-arm64,darwin-amd64,darwin-arm64 \
+            --description "CERN SSO CLI" \
+            --license "GPL-3.0-only" \
+            --url "https://github.com/clelange/cern-sso-cli" \
+            --readme README.md
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
