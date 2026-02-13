@@ -87,7 +87,8 @@ func (p *OTPProvider) GetOTP(username string) (string, string, error) {
 // executeOTPCommand runs a shell command and returns its output as an OTP.
 func executeOTPCommand(command string) (string, error) {
 	// Use shell to execute the command (supports pipes, etc.)
-	cmd := exec.Command("sh", "-c", command)
+	// Command is user-configured via CERN_SSO_OTP_COMMAND environment variable
+	cmd := exec.Command("sh", "-c", command) // #nosec G702,G204
 	output, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError

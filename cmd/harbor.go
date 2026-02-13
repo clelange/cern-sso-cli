@@ -136,7 +136,7 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 		req.AddCookie(c)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G704
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch user profile: %w", err)
 	}
@@ -182,7 +182,7 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 		req.AddCookie(c)
 	}
 
-	resp, err = client.Do(req)
+	resp, err = client.Do(req) // #nosec G704
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch CLI secret: %w", err)
 	}

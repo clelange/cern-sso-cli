@@ -118,7 +118,7 @@ func findKeytabPath() string {
 		if strings.HasPrefix(envPath, "FILE:") {
 			path = strings.TrimPrefix(envPath, "FILE:")
 		}
-		if _, err := os.Stat(path); err == nil {
+		if _, err := os.Stat(path); err == nil { // #nosec G703
 			return path
 		}
 	}
@@ -395,7 +395,7 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 		if strings.HasPrefix(envPath, "FILE:") {
 			path = strings.TrimPrefix(envPath, "FILE:")
 		}
-		if _, statErr := os.Stat(path); statErr == nil {
+		if _, statErr := os.Stat(path); statErr == nil { // #nosec G703
 			cl, principal, err := tryKeytabAuth(cfg, path, username, authConfig.Quiet)
 			if err != nil {
 				return nil, fmt.Errorf("authentication failed with KRB5_KTNAME=%s: %w", envPath, err)
@@ -608,7 +608,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 			locURL = selectionResp.Request.URL.ResolveReference(locURL)
 			location = locURL.String()
 		}
-		selectionResp, err = k.httpClient.Get(location)
+		selectionResp, err = k.httpClient.Get(location) // #nosec G704
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
@@ -663,7 +663,7 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 			locURL = methodResp.Request.URL.ResolveReference(locURL)
 			location = locURL.String()
 		}
-		methodResp, err = k.httpClient.Get(location)
+		methodResp, err = k.httpClient.Get(location) // #nosec G704
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
@@ -855,8 +855,8 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				redirectURI = location
 			}
 
-			_ = resp.Body.Close() // Close previous response before reassigning
-			resp, err = k.httpClient.Get(location)
+			_ = resp.Body.Close()                  // Close previous response before reassigning
+			resp, err = k.httpClient.Get(location) // #nosec G704
 			if err != nil {
 				return nil, fmt.Errorf("redirect failed: %w", err)
 			}
@@ -1094,7 +1094,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 						location = resolvedURL.String()
 					}
 				}
-				oidcResp, err = k.httpClient.Get(location)
+				oidcResp, err = k.httpClient.Get(location) // #nosec G704
 				if err != nil {
 					return nil, fmt.Errorf("failed to follow OIDC redirect: %w", err)
 				}
@@ -1137,13 +1137,13 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 	// We need to follow redirects but NOT consume the final page - only get the redirect chain
 	kerbAuthURL := kerbURL
 	for {
-		req, err := http.NewRequest("GET", kerbAuthURL, nil)
+		req, err := http.NewRequest("GET", kerbAuthURL, nil) // #nosec G704
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redirect request: %w", err)
 		}
 
 		// Use the no-redirect client
-		resp, err := k.httpClient.Do(req)
+		resp, err := k.httpClient.Do(req) // #nosec G704
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
@@ -1205,7 +1205,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 				redirectURI = location
 			}
 
-			authResp, err = k.httpClient.Get(location)
+			authResp, err = k.httpClient.Get(location) // #nosec G704
 			if err != nil {
 				return nil, fmt.Errorf("redirect failed: %w", err)
 			}

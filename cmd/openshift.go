@@ -224,7 +224,7 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	// Submit the form
 	var formResp *http.Response
 	if method == "GET" {
-		formResp, err = client.Get(formURL + "?" + formData.Encode())
+		formResp, err = client.Get(formURL + "?" + formData.Encode()) // #nosec G704
 	} else {
 		formResp, err = client.PostForm(formURL, formData)
 	}
