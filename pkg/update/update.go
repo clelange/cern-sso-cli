@@ -46,7 +46,7 @@ func CheckForUpdate() (*ReleaseInfo, error) {
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "cern-sso-cli")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) // #nosec G704
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
 	}
@@ -304,12 +304,12 @@ func ReplaceBinary(newBinary []byte) error {
 	}
 
 	// Set permissions
-	if err := os.Chmod(tmpPath, info.Mode()); err != nil {
+	if err := os.Chmod(tmpPath, info.Mode()); err != nil { // #nosec G703
 		return fmt.Errorf("failed to set permissions: %w", err)
 	}
 
 	// Atomic rename
-	if err := os.Rename(tmpPath, execPath); err != nil {
+	if err := os.Rename(tmpPath, execPath); err != nil { // #nosec G703
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}
 

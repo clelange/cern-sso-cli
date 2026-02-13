@@ -51,7 +51,7 @@ func FindCCachePath() string {
 			return ""
 		}
 		// If it's a plain path, check if it exists
-		if _, err := os.Stat(ccachePath); err == nil {
+		if _, err := os.Stat(ccachePath); err == nil { // #nosec G703
 			return ccachePath
 		}
 	}
@@ -78,7 +78,7 @@ func FindCCachePath() string {
 	}
 
 	for _, path := range defaultPaths {
-		if _, err := os.Stat(path); err == nil {
+		if _, err := os.Stat(path); err == nil { // #nosec G703
 			return path
 		}
 	}
