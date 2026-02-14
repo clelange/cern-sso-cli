@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/clelange/cern-sso-cli/compare/v0.30.0...v0.30.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* suppress gosec v2.23.0 false positives from new taint analysis ([318ee47](https://github.com/clelange/cern-sso-cli/commit/318ee476f2346fdd8a9de451d1df2212e6d090f5))
+
 ## [0.30.0](https://github.com/clelange/cern-sso-cli/compare/v0.29.0...v0.30.0) (2026-02-06)
 
 
