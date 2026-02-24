@@ -6,7 +6,7 @@ IMAGE_NAME ?= cern-sso-cli
 
 LDFLAGS = -X main.version=$(VERSION)
 
-.PHONY: all build build-no-webauthn clean test-integration lint build-all build-no-webauthn download-certs check-certs docker-build docker-push
+.PHONY: all build build-no-webauthn clean test-integration lint lint-go lint-security build-all build-no-webauthn download-certs check-certs docker-build docker-push
 
 all: build
 
@@ -25,8 +25,13 @@ test-integration:
 test:
 	go test -v ./...
 
-lint:
+lint: lint-go lint-security
+
+lint-go:
 	golangci-lint run ./...
+
+lint-security:
+	gosec -exclude-dir=passkey-helper -exclude=G104,G117 -quiet ./...
 
 clean:
 	rm -f $(BINARY_NAME)
