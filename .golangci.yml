@@ -42,7 +42,6 @@ linters:
       - path: '_test\.go'
         linters:
           - cyclop
-          - gosec
           - errcheck
       # Exclude generated files
       - path: '.*_generated\.go'
