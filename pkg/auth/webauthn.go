@@ -110,7 +110,7 @@ func formatDeviceList(locs []*libfido2.DeviceLocation) string {
 	var sb strings.Builder
 	sb.WriteString("Available FIDO2 devices:\n")
 	for i, loc := range locs {
-		sb.WriteString(fmt.Sprintf("  [%d] %s (%s)\n", i, loc.Product, loc.Path))
+		fmt.Fprintf(&sb, "  [%d] %s (%s)\n", i, loc.Product, loc.Path)
 	}
 	return sb.String()
 }
