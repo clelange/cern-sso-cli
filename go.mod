@@ -10,7 +10,7 @@ require (
 	github.com/jcmturner/gokrb5/v8 v8.4.4
 	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 )
 
 require (
