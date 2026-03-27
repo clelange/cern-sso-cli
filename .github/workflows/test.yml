@@ -15,7 +15,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Install libfido2 (WebAuthn support)
@@ -54,7 +54,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Download CERN CA certificates
@@ -131,7 +131,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Install libfido2 (WebAuthn support)
@@ -161,7 +161,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Install Kerberos and libfido2
@@ -226,7 +226,7 @@ jobs:
     - uses: actions/checkout@v6
     - uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
     - name: Install libfido2 (WebAuthn support)
       run: brew install libfido2
@@ -250,7 +250,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         cache: true
 
     - name: Download CERN CA certificates

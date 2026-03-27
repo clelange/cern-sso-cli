@@ -245,7 +245,7 @@ func Load(filename string) ([]*http.Cookie, error) {
 		name := parts[5]
 		value := parts[6]
 
-		cookies = append(cookies, &http.Cookie{
+		cookies = append(cookies, &http.Cookie{ // #nosec G124
 			Name:     name,
 			Value:    value,
 			Path:     path,
