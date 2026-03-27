@@ -4,7 +4,7 @@ This guide is for contributors who want to build, test, and develop cern-sso-cli
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.26 or later
 - Make
 - Docker (for container builds, optional)
 

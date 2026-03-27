@@ -274,7 +274,7 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 			username = strings.TrimPrefix(c.Value, "username:")
 		}
 
-		httpCookie := &http.Cookie{
+		httpCookie := &http.Cookie{ // #nosec G124
 			Name:     c.Name,
 			Value:    c.Value,
 			Domain:   c.Domain,
