@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.30.1](https://github.com/clelange/cern-sso-cli/compare/v0.30.0...v0.30.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** align lint entrypoint and restore gosec in lint target ([69dab52](https://github.com/clelange/cern-sso-cli/commit/69dab527fd0212532903ff462a72a524757256d6))
+* resolve CI lint failures in PR [#96](https://github.com/clelange/cern-sso-cli/issues/96) ([81015a2](https://github.com/clelange/cern-sso-cli/commit/81015a28abddabdafc9453fcc0821d9723e86aaa))
+* suppress gosec v2.23.0 false positives from new taint analysis ([318ee47](https://github.com/clelange/cern-sso-cli/commit/318ee476f2346fdd8a9de451d1df2212e6d090f5))
+
 ## [0.30.0](https://github.com/clelange/cern-sso-cli/compare/v0.29.0...v0.30.0) (2026-02-06)
 
 
