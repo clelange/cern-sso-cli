@@ -18,12 +18,13 @@ const (
 
 // Global flags
 var (
-	quiet      bool
-	krbUser    string
-	krb5Config string
-	otpCode    string
-	otpCommand string
-	otpRetries int
+	quiet           bool
+	krbUser         string
+	krb5Config      string
+	otpCode         string
+	otpCommand      string
+	otpKeychainName string
+	otpRetries      int
 	// WebAuthn flags
 	webauthnPIN         string
 	webauthnDevice      string
@@ -80,7 +81,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&krb5Config, "krb5-config", "", "Kerberos config source: 'embedded' (default), 'system', or file path")
 	rootCmd.PersistentFlags().StringVar(&otpCode, "otp", "", "6-digit OTP code for 2FA (alternative to prompt)")
 	rootCmd.PersistentFlags().StringVar(&otpCommand, "otp-command", "", "Command to execute to get OTP (e.g., 'op item get CERN --otp')")
-	rootCmd.PersistentFlags().IntVar(&otpRetries, "otp-retries", 3, "Max OTP retry attempts (0 to disable retry)")
+	rootCmd.PersistentFlags().StringVar(&otpKeychainName, "otp-keychain", "", "macOS Keychain service name containing TOTP secret (e.g., 'cern-otp')")
+	rootCmd.PersistentFlags().IntVar(&otpRetries, "otp-retries", 3, "Max OTP attempts (default 3, set 0 to disable retries)")
 	// WebAuthn flags
 	rootCmd.PersistentFlags().StringVar(&webauthnPIN, "webauthn-pin", "", "PIN for FIDO2 security key (alternative to prompt)")
 	rootCmd.PersistentFlags().StringVar(&webauthnDevice, "webauthn-device", "", "Path to specific FIDO2 device (auto-detect if empty)")
@@ -138,9 +140,11 @@ func normalizeUsername(username string) string {
 // GetOTPProvider returns an OTP provider configured with CLI flags.
 func GetOTPProvider() *auth.OTPProvider {
 	return &auth.OTPProvider{
-		OTP:        otpCode,
-		OTPCommand: otpCommand,
-		MaxRetries: otpRetries,
+		OTP:             otpCode,
+		OTPCommand:      otpCommand,
+		OTPKeychainName: otpKeychainName,
+		MaxRetries:      otpRetries,
+		DisableRetries:  otpRetries == 0,
 	}
 }
 
