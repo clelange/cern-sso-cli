@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/clelange/cern-sso-cli/compare/v0.30.1...v0.31.0) (2026-03-31)
+
+
+### Features
+
+* Add macOS keychain TOTP support ([4a876f7](https://github.com/clelange/cern-sso-cli/commit/4a876f7f3c7eec06fa537aea2bf64bfc979ef5ab))
+
 ## [0.30.1](https://github.com/clelange/cern-sso-cli/compare/v0.30.0...v0.30.1) (2026-03-27)
 
 
