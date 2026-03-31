@@ -11,6 +11,7 @@ A Go implementation of CERN SSO authentication tools. This is the Go equivalent 
 - Cookie reuse: Existing auth.cern.ch cookies are reused for new CERN subdomains, avoiding redundant Kerberos authentication
 - Support for skipping certificate validation via `--insecure` or `-k`
 - 2FA support for CERN primary accounts (OTP & WebAuthn/YubiKey)
+- Built-in TOTP generation from macOS Keychain (no external tools needed)
 - Shell completion for bash, zsh, fish, and PowerShell
 
 ## Installation
@@ -250,6 +251,42 @@ cern-get-keytab --user --login youruser --keytab ~/.keytab
 For more information, see [Generating a user keytab at CERN](https://cern.service-now.com/service-portal?id=kb_article&n=KB0003405).
 
 
+### Keychain TOTP (macOS)
+
+On macOS, you can store your TOTP secret in the system Keychain and let the tool generate OTP codes automatically — no external tools (like `oathtool`) or paid password managers required.
+
+**Setup (one-time):**
+
+1. Get your TOTP secret from your authenticator app registration (the base32-encoded string shown when setting up 2FA, often displayed as a QR code or text like `JBSWY3DPEHPK3PXP`).
+
+2. Store it in the macOS Keychain:
+
+```bash
+security add-generic-password -a "<cern-username>" -s cern-otp -l "CERN OTP secret" -U -w
+# Paste your TOTP secret when prompted
+```
+
+Use your CERN username here, not necessarily your local macOS account name.
+
+**Usage:**
+
+```bash
+# Use the keychain service name
+cern-sso-cli cookie --url https://gitlab.cern.ch --otp-keychain cern-otp
+
+# Or set it via environment variable for persistent use
+export CERN_SSO_OTP_KEYCHAIN=cern-otp
+cern-sso-cli cookie --url https://gitlab.cern.ch
+```
+
+The tool retrieves the secret from the Keychain, generates a 6-digit TOTP code (RFC 6238, HMAC-SHA1, 30-second window), and uses it for 2FA — all without any external dependencies.
+
+**Notes:**
+- The `--user` flag or Kerberos principal is used as the Keychain account name (the `@CERN.CH` realm is stripped automatically).
+- You can use any service name you like (e.g., `cern-otp`, `my-cern-totp`). Just make sure it matches between the `security add-generic-password` command and the `--otp-keychain` flag.
+- Auto-generated TOTP sources (`--otp-keychain`, `--otp-command`) are retried once after the next 30-second TOTP window if the first code is rejected. Use `--otp-retries 0` to disable retries entirely.
+- This feature is macOS-only. On Linux, use `--otp-command` with a TOTP tool of your choice.
+
 ### WebAuthn (FIDO2 / YubiKey / Touch ID)
 If your account supports WebAuthn, you can use:
 1.  **Hardware Keys (YubiKey)**: Supported natively via `libfido2`.
@@ -304,7 +341,8 @@ cern-sso-cli --webauthn-device-index 0 cookie --url https://gitlab.cern.ch
 | `--use-ccache` | Force credential cache authentication. |
 | `--otp` | Provide OTP code directly (e.g. `--otp 123456`). |
 | `--otp-command` | Command to fetch OTP (e.g. 1Password CLI). |
-| `--otp-retries` | Max OTP retry attempts (default 3). |
+| `--otp-keychain` | macOS Keychain service name containing TOTP secret. |
+| `--otp-retries` | Max OTP attempts (default 3, set `0` to disable retries). |
 | `--use-otp` | Use OTP even if WebAuthn is default. |
 | `--use-webauthn` | Use WebAuthn even if OTP is default. |
 | `--browser` | Use browser for authentication (supports WebAuthn, Touch ID, etc.). |
