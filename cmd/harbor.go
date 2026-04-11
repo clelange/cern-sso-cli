@@ -1,20 +1,15 @@
 package cmd
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
 
 	"github.com/spf13/cobra"
+
+	harborsvc "github.com/clelange/cern-sso-cli/pkg/services/harbor"
 )
 
-const (
-	defaultHarborURL  = "https://registry.cern.ch"
-	harborHTTPTimeout = 30 * time.Second
-)
+const defaultHarborURL = "https://registry.cern.ch"
 
 var (
 	harborURL      string
@@ -76,117 +71,24 @@ func runHarbor(cmd *cobra.Command, args []string) error {
 	}
 
 	// Now use the cookies to fetch the user profile from Harbor API
-	secret, username, err := fetchHarborCLISecret(harborURL, cookies, !harborInsecure)
+	secretResult, err := harborsvc.FetchCLISecret(harborURL, cookies, !harborInsecure)
 	if err != nil {
 		return err
 	}
+	logInfo("Authenticated as: %s (ID: %d)\n", secretResult.Username, secretResult.UserID)
 
 	// Output
 	if harborJSON {
 		output := HarborSecretOutput{
-			Username: username,
-			Secret:   secret,
+			Username: secretResult.Username,
+			Secret:   secretResult.Secret,
 		}
 		data, _ := json.Marshal(output)
 		fmt.Println(string(data))
 	} else {
-		logInfo("Username: %s\n", username)
-		fmt.Println(secret)
+		logInfo("Username: %s\n", secretResult.Username)
+		fmt.Println(secretResult.Secret)
 	}
 
 	return nil
-}
-
-// fetchHarborCLISecret fetches the CLI secret from Harbor API using the provided cookies.
-//
-//nolint:cyclop // Complex API interaction with multiple fallback strategies
-func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bool) (string, string, error) {
-	// Create HTTP client
-	client := &http.Client{}
-	if !verifyCerts {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
-		}
-	}
-	client.Timeout = harborHTTPTimeout
-
-	// Fetch current user
-	currentUserURL := baseURL + "/api/v2.0/users/current"
-	req, err := http.NewRequest("GET", currentUserURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add cookies
-	for _, c := range cookies {
-		req.AddCookie(c)
-	}
-
-	resp, err := client.Do(req) // #nosec G704
-	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch user profile: %w", err)
-	}
-	defer func() {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", "", fmt.Errorf("failed to fetch user profile (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var userData map[string]interface{}
-	if err := json.Unmarshal(body, &userData); err != nil {
-		return "", "", fmt.Errorf("failed to parse user data: %w", err)
-	}
-
-	userID, _ := userData["user_id"].(float64)
-	username, _ := userData["username"].(string)
-	logInfo("Authenticated as: %s (ID: %.0f)\n", username, userID)
-
-	// Strategy 1: Check if secret is in oidc_user_meta
-	if oidcMeta, ok := userData["oidc_user_meta"].(map[string]interface{}); ok {
-		if secret, ok := oidcMeta["secret"].(string); ok && secret != "" {
-			return secret, username, nil
-		}
-	}
-
-	// Strategy 2: Fetch from CLI secret endpoint
-	secretURL := fmt.Sprintf("%s/api/v2.0/users/%.0f/cli_secret", baseURL, userID)
-	req, err = http.NewRequest("GET", secretURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
-	}
-	for _, c := range cookies {
-		req.AddCookie(c)
-	}
-
-	resp, err = client.Do(req) // #nosec G704
-	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch CLI secret: %w", err)
-	}
-	defer func() {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-	}()
-
-	if resp.StatusCode == http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		var secretData map[string]interface{}
-		if err := json.Unmarshal(body, &secretData); err == nil {
-			if secret, ok := secretData["secret"].(string); ok && secret != "" {
-				return secret, username, nil
-			}
-		}
-	}
-
-	return "", "", fmt.Errorf("CLI secret not found in user profile or API")
 }

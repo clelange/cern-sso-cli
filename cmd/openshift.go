@@ -1,24 +1,16 @@
 package cmd
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/cookiejar"
 	"net/url"
-	"strings"
-	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
+
+	openshiftsvc "github.com/clelange/cern-sso-cli/pkg/services/openshift"
 )
 
-const (
-	defaultOpenShiftURL  = "https://paas.cern.ch"
-	openshiftHTTPTimeout = 30 * time.Second
-)
+const defaultOpenShiftURL = "https://paas.cern.ch"
 
 var (
 	openshiftURL      string
@@ -95,7 +87,14 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch the token request page and parse the login command
-	loginCmd, token, server, err := fetchOpenShiftLoginCommand(oauthBaseURL, openshiftURL, openshiftAuthHost, cookies, !openshiftInsecure)
+	loginResult, err := openshiftsvc.FetchLoginCommand(
+		oauthBaseURL,
+		openshiftURL,
+		openshiftAuthHost,
+		cookies,
+		!openshiftInsecure,
+		logInfo,
+	)
 	if err != nil {
 		return err
 	}
@@ -104,207 +103,17 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	switch {
 	case openshiftJSON:
 		output := OpenShiftLoginOutput{
-			Command: loginCmd,
-			Token:   token,
-			Server:  server,
+			Command: loginResult.Command,
+			Token:   loginResult.Token,
+			Server:  loginResult.Server,
 		}
 		data, _ := json.Marshal(output)
 		fmt.Println(string(data))
 	case openshiftLoginCmd:
-		fmt.Println(loginCmd)
+		fmt.Println(loginResult.Command)
 	default:
-		fmt.Println(token)
+		fmt.Println(loginResult.Token)
 	}
 
 	return nil
-}
-
-// fetchOpenShiftLoginCommand fetches the oc login command from OpenShift token request page.
-//
-//nolint:cyclop // Complex form parsing and submission flow
-func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL, authHost string, cookies []*http.Cookie, verifyCerts bool) (string, string, string, error) {
-	// Create HTTP client with cookie jar
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to create cookie jar: %w", err)
-	}
-
-	transport := &http.Transport{}
-	if !verifyCerts {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
-	}
-
-	client := &http.Client{
-		Jar:       jar,
-		Transport: transport,
-		Timeout:   openshiftHTTPTimeout,
-	}
-
-	// Set cookies on the OAuth URL
-	oauthURL, _ := url.Parse(oauthBaseURL)
-	jar.SetCookies(oauthURL, cookies)
-
-	// Also set cookies on auth.cern.ch for the SSO session
-	authURL, _ := url.Parse("https://" + authHost)
-	jar.SetCookies(authURL, cookies)
-
-	// Step 1: Fetch the token request page (may redirect to /display?code=...)
-	tokenRequestURL := oauthBaseURL + "/oauth/token/request"
-
-	resp, err := client.Get(tokenRequestURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to fetch token request page: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", "", "", fmt.Errorf("failed to fetch token request page (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	// Parse HTML to find the "Display Token" form or the token itself
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to parse HTML: %w", err)
-	}
-
-	// Check if we're already on the token display page
-	loginCmd, token, server := parseTokenFromPage(doc, clusterURL)
-	if loginCmd != "" {
-		return loginCmd, token, server, nil
-	}
-
-	// Look for the "Display Token" form and submit it
-	form := doc.Find("form")
-	if form.Length() == 0 {
-		return "", "", "", fmt.Errorf("could not find Display Token form on page")
-	}
-
-	// Get form action
-	action, exists := form.Attr("action")
-	if !exists {
-		action = resp.Request.URL.Path
-	}
-
-	// Resolve relative action URL
-	formURL := oauthBaseURL + action
-	if strings.HasPrefix(action, "http") {
-		formURL = action
-	}
-
-	// Get form method (default POST)
-	method := strings.ToUpper(form.AttrOr("method", "POST"))
-
-	// Collect form data
-	formData := url.Values{}
-	form.Find("input").Each(func(_ int, s *goquery.Selection) {
-		name, _ := s.Attr("name")
-		value := s.AttrOr("value", "")
-		if name != "" {
-			formData.Set(name, value)
-		}
-	})
-
-	logInfo("Submitting Display Token form...\n")
-
-	// Submit the form
-	var formResp *http.Response
-	if method == "GET" {
-		formResp, err = client.Get(formURL + "?" + formData.Encode()) // #nosec G704
-	} else {
-		formResp, err = client.PostForm(formURL, formData)
-	}
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to submit form: %w", err)
-	}
-	defer func() {
-		if formResp != nil && formResp.Body != nil {
-			_ = formResp.Body.Close()
-		}
-	}()
-
-	if formResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(formResp.Body)
-		return "", "", "", fmt.Errorf("form submission failed (status %d): %s", formResp.StatusCode, string(body))
-	}
-
-	// Parse the token display page
-	bodyBytes, err := io.ReadAll(formResp.Body)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to parse token page: %w", err)
-	}
-
-	loginCmd, token, server = parseTokenFromPage(doc, clusterURL)
-	if loginCmd == "" {
-		return "", "", "", fmt.Errorf("could not find oc login command in response")
-	}
-
-	return loginCmd, token, server, nil
-}
-
-// parseTokenFromPage extracts the oc login command from an HTML document.
-//
-//nolint:cyclop // Multiple parsing strategies for different page layouts
-func parseTokenFromPage(doc *goquery.Document, clusterURL string) (loginCmd, token, server string) {
-	// Strategy 1: Look for pre element containing "oc login" (the actual displayed command)
-	doc.Find("pre").Each(func(_ int, s *goquery.Selection) {
-		text := strings.TrimSpace(s.Text())
-		if strings.Contains(text, "oc login") && strings.Contains(text, "--token=") {
-			loginCmd = text
-		}
-	})
-
-	// Strategy 2: Look for code element with just the token (e.g., <code>sha256~...</code>)
-	doc.Find("code").Each(func(_ int, s *goquery.Selection) {
-		text := strings.TrimSpace(s.Text())
-		// Check if this is just a token (not a full command)
-		if strings.HasPrefix(text, "sha256~") && !strings.Contains(text, " ") {
-			token = strings.Trim(text, "\"'") // Clean up any quotes
-		}
-	})
-
-	// If we found the login command, extract token and server from it
-	if loginCmd != "" {
-		// Parse the command to extract token and server
-		// Format: oc login --token=xxx --server=xxx
-		for _, part := range strings.Fields(loginCmd) {
-			if strings.HasPrefix(part, "--token=") {
-				token = strings.TrimPrefix(part, "--token=")
-				token = strings.Trim(token, "\"'") // Clean up any quotes
-			}
-			if strings.HasPrefix(part, "--server=") {
-				server = strings.TrimPrefix(part, "--server=")
-				server = strings.Trim(server, "\"'")
-			}
-		}
-	} else if token != "" {
-		// If we only found the token, try to find the server and construct the command
-		// Look for server URL in pre elements
-		doc.Find("pre").Each(func(_ int, s *goquery.Selection) {
-			text := strings.TrimSpace(s.Text())
-			if strings.Contains(text, "--server=") {
-				for _, part := range strings.Fields(text) {
-					if strings.HasPrefix(part, "--server=") {
-						server = strings.TrimPrefix(part, "--server=")
-						server = strings.Trim(server, "\"'")
-						break
-					}
-				}
-			}
-		})
-
-		// Fallback: construct API server from cluster URL
-		if server == "" {
-			parsedURL, _ := url.Parse(clusterURL)
-			server = parsedURL.Scheme + "://api." + parsedURL.Host + ":6443"
-		}
-		loginCmd = fmt.Sprintf("oc login --token=%s --server=%s", token, server)
-	}
-
-	return loginCmd, token, server
 }
