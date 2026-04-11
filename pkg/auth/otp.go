@@ -182,9 +182,9 @@ func validateOTP(otp string) (string, error) {
 // promptForOTPInteractive prompts the user interactively for an OTP code.
 func promptForOTPInteractive(username string) (string, error) {
 	if username != "" {
-		fmt.Printf("Enter your 6-digit OTP code for %s: ", username)
+		_, _ = fmt.Fprintf(os.Stderr, "Enter your 6-digit OTP code for %s: ", username)
 	} else {
-		fmt.Print("Enter your 6-digit OTP code: ")
+		_, _ = fmt.Fprint(os.Stderr, "Enter your 6-digit OTP code: ")
 	}
 	var code string
 	_, err := fmt.Scanln(&code)
@@ -252,7 +252,7 @@ func (p *OTPProvider) RefreshOTP(username string, source string, attempt, maxRet
 
 	case OTPSourcePrompt:
 		// Re-prompt the user
-		fmt.Printf("Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
+		_, _ = fmt.Fprintf(os.Stderr, "Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
 		var code string
 		_, err := fmt.Scanln(&code)
 		if err != nil {

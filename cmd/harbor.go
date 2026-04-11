@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,7 +14,8 @@ import (
 )
 
 const (
-	defaultHarborURL = "https://registry.cern.ch"
+	defaultHarborURL  = "https://registry.cern.ch"
+	harborHTTPTimeout = 30 * time.Second
 )
 
 var (
@@ -123,6 +125,7 @@ func fetchHarborCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bo
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 		}
 	}
+	client.Timeout = harborHTTPTimeout
 
 	// Fetch current user
 	currentUserURL := baseURL + "/api/v2.0/users/current"

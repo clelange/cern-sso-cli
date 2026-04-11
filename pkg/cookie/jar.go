@@ -16,6 +16,8 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
+const verifyHTTPTimeout = 30 * time.Second
+
 // MatchDomain checks if a cookie domain matches the target domain.
 // Cookie domain ".example.com" matches "sub.example.com" and "example.com".
 // Cookie domain "example.com" matches only "example.com".
@@ -76,7 +78,8 @@ func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie, verifyCer
 	}
 
 	client := &http.Client{
-		Jar: jar,
+		Jar:     jar,
+		Timeout: verifyHTTPTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert}, // #nosec G402
 		},

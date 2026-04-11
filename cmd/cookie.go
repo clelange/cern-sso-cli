@@ -134,6 +134,11 @@ func runCookie(cmd *cobra.Command, args []string) error {
 				if err := jar.Update(cookieFile, nil, targetDomain); err != nil {
 					logInfo("Warning: Failed to cleanup cookies: %v\n", err)
 				}
+				printCookieOutput(&CookieOutput{
+					File:  cookieFile,
+					Count: len(domainCookies),
+					User:  cookie.LoadUser(cookieFile),
+				})
 				return nil
 			}
 			logPrintln("Cookies expired or invalid. Authenticating...")

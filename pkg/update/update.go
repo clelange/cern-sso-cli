@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
@@ -20,7 +21,9 @@ const (
 	// GitHubRepo is the repository path for releases.
 	GitHubRepo = "clelange/cern-sso-cli"
 	// GitHubAPIURL is the base URL for GitHub API.
-	GitHubAPIURL = "https://api.github.com"
+	GitHubAPIURL          = "https://api.github.com"
+	updateAPITimeout      = 30 * time.Second
+	updateDownloadTimeout = 10 * time.Minute
 )
 
 // ReleaseAsset represents a downloadable asset from a GitHub release.
@@ -46,7 +49,8 @@ func CheckForUpdate() (*ReleaseInfo, error) {
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "cern-sso-cli")
 
-	resp, err := http.DefaultClient.Do(req) // #nosec G704
+	client := &http.Client{Timeout: updateAPITimeout}
+	resp, err := client.Do(req) // #nosec G704
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
 	}
@@ -169,7 +173,8 @@ func GetAssetForCurrentPlatform(release *ReleaseInfo) (binaryURL, checksumURL st
 //
 //nolint:cyclop // Download with progress tracking and chunked reading
 func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte, error) {
-	resp, err := http.Get(url) // #nosec G107
+	client := &http.Client{Timeout: updateDownloadTimeout}
+	resp, err := client.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -214,7 +219,8 @@ func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte,
 
 // FetchChecksums downloads and parses the checksums file.
 func FetchChecksums(url string) (map[string]string, error) {
-	resp, err := http.Get(url) // #nosec G107
+	client := &http.Client{Timeout: updateAPITimeout}
+	resp, err := client.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download checksums: %w", err)
 	}

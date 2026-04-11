@@ -1,23 +1,17 @@
 package auth
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestNewKerberosClient_UserMismatch_SkipsPassword(t *testing.T) {
 	// Set up environment with credentials for User A
-	_ = os.Setenv("KRB5_USERNAME", "userA")
-	_ = os.Setenv("KRB5_PASSWORD", "passwordA")
-	// Ensure no ccache or keytab is picked up
-	_ = os.Setenv("KRB5CCNAME", "/nonexistent/file")
-	_ = os.Setenv("KRB5_KTNAME", "/nonexistent/file")
-
-	defer func() { _ = os.Unsetenv("KRB5_USERNAME") }()
-	defer func() { _ = os.Unsetenv("KRB5_PASSWORD") }()
-	defer func() { _ = os.Unsetenv("KRB5CCNAME") }()
-	defer func() { _ = os.Unsetenv("KRB5_KTNAME") }()
+	t.Setenv("KRB5_USERNAME", "userA")
+	t.Setenv("KRB5_PASSWORD", "passwordA")
+	// Ensure no ccache is picked up and force the post-password path to surface.
+	t.Setenv("KRB5CCNAME", "/nonexistent/file")
+	t.Setenv("KRB5_KTNAME", "/nonexistent/file")
 
 	// Attempt to authenticate as User B
 	// This should NOT use passwordA.
@@ -27,13 +21,21 @@ func TestNewKerberosClient_UserMismatch_SkipsPassword(t *testing.T) {
 		t.Fatalf("Expected error, got success for %s", client.username)
 	}
 
-	// If the password was used, we would likely get a KDC error or a network error
-	// (because we're using embedded config which points to real CERN KDC, or it tries to dial).
-	// If the password was correctly skipped, we fall through to other methods.
-	// Since we disabled ccache and keytab, we expect "no authentication method available".
-
 	errStr := err.Error()
-	if !strings.Contains(errStr, "no authentication method available") {
-		t.Errorf("Expected 'no authentication method available' error, proving password was skipped. Got: %v", err)
+	if !strings.Contains(errStr, "KRB5_KTNAME") {
+		t.Errorf("Expected KRB5_KTNAME error, proving password auth was skipped. Got: %v", err)
+	}
+}
+
+func TestNewKerberosClient_InvalidKRB5KTNAMEFailsFast(t *testing.T) {
+	t.Setenv("KRB5CCNAME", "/nonexistent/file")
+	t.Setenv("KRB5_KTNAME", "/nonexistent/file")
+
+	_, err := NewKerberosClientWithConfig("dev", Krb5ConfigEmbedded, "", false, AuthConfig{})
+	if err == nil {
+		t.Fatal("expected error for invalid KRB5_KTNAME")
+	}
+	if !strings.Contains(err.Error(), "KRB5_KTNAME") {
+		t.Fatalf("expected KRB5_KTNAME error, got: %v", err)
 	}
 }

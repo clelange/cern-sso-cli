@@ -323,24 +323,26 @@ func TestParseMethodSelectionPage(t *testing.T) {
 	otpMethod := page.FindMethod(MethodOTP)
 	if otpMethod == nil {
 		t.Fatal("Expected to find OTP method")
-	}
-	if otpMethod.ExecutionID != "133f73d5-6454-4197-b529-b109a5d9432c" {
-		t.Errorf("Expected OTP execution ID '133f73d5-6454-4197-b529-b109a5d9432c', got %q", otpMethod.ExecutionID)
-	}
-	if otpMethod.Label != "Authenticator Application" {
-		t.Errorf("Expected OTP label 'Authenticator Application', got %q", otpMethod.Label)
+	} else {
+		if otpMethod.ExecutionID != "133f73d5-6454-4197-b529-b109a5d9432c" {
+			t.Errorf("Expected OTP execution ID '133f73d5-6454-4197-b529-b109a5d9432c', got %q", otpMethod.ExecutionID)
+		}
+		if otpMethod.Label != "Authenticator Application" {
+			t.Errorf("Expected OTP label 'Authenticator Application', got %q", otpMethod.Label)
+		}
 	}
 
 	// Check WebAuthn method
 	webauthnMethod := page.FindMethod(MethodWebAuthn)
 	if webauthnMethod == nil {
 		t.Fatal("Expected to find WebAuthn method")
-	}
-	if webauthnMethod.ExecutionID != "4b3b18ac-dab0-4946-8d47-f7d8827cfedc" {
-		t.Errorf("Expected WebAuthn execution ID '4b3b18ac-dab0-4946-8d47-f7d8827cfedc', got %q", webauthnMethod.ExecutionID)
-	}
-	if webauthnMethod.Label != "Security Key" {
-		t.Errorf("Expected WebAuthn label 'Security Key', got %q", webauthnMethod.Label)
+	} else {
+		if webauthnMethod.ExecutionID != "4b3b18ac-dab0-4946-8d47-f7d8827cfedc" {
+			t.Errorf("Expected WebAuthn execution ID '4b3b18ac-dab0-4946-8d47-f7d8827cfedc', got %q", webauthnMethod.ExecutionID)
+		}
+		if webauthnMethod.Label != "Security Key" {
+			t.Errorf("Expected WebAuthn label 'Security Key', got %q", webauthnMethod.Label)
+		}
 	}
 }
 
