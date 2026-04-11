@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 
@@ -99,21 +98,18 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Output
-	switch {
-	case openshiftJSON:
-		output := OpenShiftLoginOutput{
-			Command: loginResult.Command,
-			Token:   loginResult.Token,
-			Server:  loginResult.Server,
-		}
-		data, _ := json.Marshal(output)
-		fmt.Println(string(data))
-	case openshiftLoginCmd:
-		fmt.Println(loginResult.Command)
-	default:
-		fmt.Println(loginResult.Token)
+	return renderOpenShiftOutput(loginResult.Command, loginResult.Token, loginResult.Server)
+}
+
+func renderOpenShiftOutput(command, token, server string) error {
+	text := token
+	if openshiftLoginCmd {
+		text = command
 	}
 
-	return nil
+	return writeCommandOutput(openshiftJSON, OpenShiftLoginOutput{
+		Command: command,
+		Token:   token,
+		Server:  server,
+	}, text)
 }
