@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -66,32 +67,26 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if quiet {
-		// In quiet mode, exit with code based on cookie validity
-		if verified {
-			// If verification was requested, use actual verification result
-			if verifiedValid {
-				os.Exit(0)
-			} else {
-				os.Exit(1)
-			}
-		} else {
-			// Without verification, check expiry times only
-			now := time.Now()
-			hasValidCookies := false
-			for _, c := range cookies {
-				if c.Expires.IsZero() || c.Expires.After(now) {
-					hasValidCookies = true
-					break
-				}
-			}
-			if hasValidCookies {
-				os.Exit(0)
-			} else {
-				os.Exit(1)
-			}
+		if statusIsValid(cookies, verified, verifiedValid, time.Now()) {
+			return nil
 		}
+		return &exitCodeError{code: 1}
 	}
 
 	cookie.PrintStatus(cookies, statusJSON, verified, verifiedValid, os.Stdout)
 	return nil
+}
+
+func statusIsValid(cookies []*http.Cookie, verified bool, verifiedValid bool, now time.Time) bool {
+	if verified {
+		return verifiedValid
+	}
+
+	for _, c := range cookies {
+		if c.Expires.IsZero() || c.Expires.After(now) {
+			return true
+		}
+	}
+
+	return false
 }
