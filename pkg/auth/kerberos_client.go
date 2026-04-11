@@ -1,17 +1,16 @@
 package auth
 
 import (
-	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"runtime"
 
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/spnego"
-	"golang.org/x/net/publicsuffix"
 
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 	"github.com/clelange/cern-sso-cli/pkg/auth/certs"
 )
 
@@ -51,7 +50,7 @@ func newTestKerberosClient(cl *client.Client, verifyCert bool) (*KerberosClient,
 
 // newKerberosClientFromKrbClientWithUser creates a KerberosClient from an existing gokrb5 client with a username.
 func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, verifyCert bool, username string) (*KerberosClient, error) {
-	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	jar, err := httpclient.NewJar()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
 	}
@@ -64,38 +63,35 @@ func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, v
 		username:         username,
 	}
 
-	// Build TLS config
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !verifyCert, // #nosec G402
-	}
-
+	var certPool *x509.CertPool
 	// When verifying certs, use system certs plus embedded CERN CA certificates
 	if verifyCert {
-		certPool, err := certs.GetSystemWithCERNCertPool()
+		certPool, err = certs.GetSystemWithCERNCertPool()
 		if err != nil {
 			// Fall back to just system certs if CERN certs fail to load
 			// This shouldn't happen with embedded certs, but be defensive
 			certPool = nil
 		}
-		tlsConfig.RootCAs = certPool
 	}
 
 	// Create a custom transport that intercepts cookies from responses
 	customTransport := &cookieInterceptTransport{
-		base: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
+		base: httpclient.NewTransport(httpclient.TransportConfig{
+			VerifyCert:     verifyCert,
+			RootCAs:        certPool,
+			ForceTLSConfig: true,
+		}),
 		client: kc,
 	}
 
-	httpClient := &http.Client{
+	httpClient := httpclient.New(httpclient.Config{
 		Jar:       jar,
 		Transport: customTransport,
 		Timeout:   oidcHTTPTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Don't follow redirects automatically
 		},
-	}
+	})
 
 	kc.httpClient = httpClient
 	return kc, nil

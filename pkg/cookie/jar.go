@@ -2,7 +2,6 @@ package cookie
 
 import (
 	"bufio"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -13,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/publicsuffix"
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 )
 
 const verifyHTTPTimeout = 30 * time.Second
@@ -77,19 +76,17 @@ func VerifyCookies(targetURL, authHost string, cookies []*http.Cookie, verifyCer
 		}
 	}
 
-	client := &http.Client{
-		Jar:     jar,
-		Timeout: verifyHTTPTimeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !verifyCert}, // #nosec G402
-		},
+	client := httpclient.New(httpclient.Config{
+		Jar:        jar,
+		Timeout:    verifyHTTPTimeout,
+		VerifyCert: verifyCert,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host == authHost {
 				return http.ErrUseLastResponse
 			}
 			return nil
 		},
-	}
+	})
 
 	resp, err := client.Get(targetURL)
 	if err != nil {
@@ -131,7 +128,7 @@ type Jar struct {
 
 // NewJar creates a new cookie jar.
 func NewJar() (*Jar, error) {
-	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	jar, err := httpclient.NewJar()
 	if err != nil {
 		return nil, err
 	}

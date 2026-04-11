@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
@@ -49,7 +50,7 @@ func CheckForUpdate() (*ReleaseInfo, error) {
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "cern-sso-cli")
 
-	client := &http.Client{Timeout: updateAPITimeout}
+	client := httpclient.New(httpclient.Config{Timeout: updateAPITimeout, VerifyCert: true})
 	resp, err := client.Do(req) // #nosec G704
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
@@ -173,7 +174,7 @@ func GetAssetForCurrentPlatform(release *ReleaseInfo) (binaryURL, checksumURL st
 //
 //nolint:cyclop // Download with progress tracking and chunked reading
 func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte, error) {
-	client := &http.Client{Timeout: updateDownloadTimeout}
+	client := httpclient.New(httpclient.Config{Timeout: updateDownloadTimeout, VerifyCert: true})
 	resp, err := client.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download binary: %w", err)
@@ -219,7 +220,7 @@ func DownloadBinary(url string, progress func(downloaded, total int64)) ([]byte,
 
 // FetchChecksums downloads and parses the checksums file.
 func FetchChecksums(url string) (map[string]string, error) {
-	client := &http.Client{Timeout: updateAPITimeout}
+	client := httpclient.New(httpclient.Config{Timeout: updateAPITimeout, VerifyCert: true})
 	resp, err := client.Get(url) // #nosec G107
 	if err != nil {
 		return nil, fmt.Errorf("failed to download checksums: %w", err)
