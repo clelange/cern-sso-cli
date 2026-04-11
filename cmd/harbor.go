@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 const (
@@ -56,10 +54,7 @@ func init() {
 
 func runHarbor(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
-	if err := ValidateMethodFlags(); err != nil {
-		return err
-	}
-	if err := ValidateAuthMethodFlags(); err != nil {
+	if err := validateAuthCLIOptions(); err != nil {
 		return err
 	}
 
@@ -68,23 +63,11 @@ func runHarbor(cmd *cobra.Command, args []string) error {
 
 	logInfo("Authenticating to Harbor at %s...\n", harborURL)
 
-	authConfig := GetAuthConfig()
-	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !harborInsecure, authConfig)
+	kerbClient, result, err := loginWithKerberosSession(loginURL, harborAuthHost, harborInsecure)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Kerberos: %w", err)
+		return err
 	}
 	defer kerbClient.Close()
-
-	// Configure authentication providers
-	kerbClient.SetOTPProvider(GetOTPProvider())
-	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferredMethod(GetPreferredMethod())
-
-	logPrintln("Logging in with Kerberos...")
-	result, err := kerbClient.LoginWithKerberos(loginURL, harborAuthHost, !harborInsecure)
-	if err != nil {
-		return fmt.Errorf("login failed: %w", err)
-	}
 
 	// Collect cookies
 	cookies, err := kerbClient.CollectCookies(loginURL, harborAuthHost, result)

@@ -13,8 +13,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
-
-	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
 const (
@@ -65,10 +63,7 @@ func init() {
 //nolint:cyclop // OpenShift OAuth authentication requires multiple steps
 func runOpenShift(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
-	if err := ValidateMethodFlags(); err != nil {
-		return err
-	}
-	if err := ValidateAuthMethodFlags(); err != nil {
+	if err := validateAuthCLIOptions(); err != nil {
 		return err
 	}
 
@@ -87,23 +82,11 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	logInfo("Authenticating to OpenShift at %s...\n", openshiftURL)
 	logInfo("OAuth endpoint: %s\n", tokenRequestURL)
 
-	authConfig := GetAuthConfig()
-	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !openshiftInsecure, authConfig)
+	kerbClient, result, err := loginWithKerberosSession(tokenRequestURL, openshiftAuthHost, openshiftInsecure)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Kerberos: %w", err)
+		return err
 	}
 	defer kerbClient.Close()
-
-	// Configure authentication providers
-	kerbClient.SetOTPProvider(GetOTPProvider())
-	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferredMethod(GetPreferredMethod())
-
-	logPrintln("Logging in with Kerberos...")
-	result, err := kerbClient.LoginWithKerberos(tokenRequestURL, openshiftAuthHost, !openshiftInsecure)
-	if err != nil {
-		return fmt.Errorf("login failed: %w", err)
-	}
 
 	// Collect cookies
 	cookies, err := kerbClient.CollectCookies(tokenRequestURL, openshiftAuthHost, result)

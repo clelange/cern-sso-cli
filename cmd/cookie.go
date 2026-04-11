@@ -57,10 +57,7 @@ func init() {
 //nolint:cyclop // Complex authentication flow with multiple code paths
 func runCookie(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
-	if err := ValidateMethodFlags(); err != nil {
-		return err
-	}
-	if err := ValidateAuthMethodFlags(); err != nil {
+	if err := validateAuthCLIOptions(); err != nil {
 		return err
 	}
 
@@ -152,19 +149,11 @@ func runCookie(cmd *cobra.Command, args []string) error {
 
 // tryAuthCookies attempts to authenticate using existing auth cookies.
 func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure bool) (bool, *auth.LoginResult, *auth.KerberosClient) {
-	authConfig := GetAuthConfig()
-	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !insecure, authConfig)
+	kerbClient, err := newConfiguredKerberosClient(insecure)
 	if err != nil {
 		logInfo("Warning: Failed to create Kerberos client for cookie attempt: %v\n", err)
 		return false, nil, nil
 	}
-
-	// Configure OTP provider for 2FA support
-	kerbClient.SetOTPProvider(GetOTPProvider())
-
-	// Configure WebAuthn provider for FIDO2 2FA support
-	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferredMethod(GetPreferredMethod())
 
 	result, err := kerbClient.TryLoginWithCookies(targetURL, authHost, cookies)
 	if err != nil {
@@ -237,25 +226,9 @@ func printCookieOutput(output *CookieOutput) {
 
 // authenticateWithKerberos performs full Kerberos authentication flow.
 func authenticateWithKerberos(targetURL, filename, authHost string, insecure bool) error {
-	logPrintln("Initializing Kerberos client...")
-	authConfig := GetAuthConfig()
-	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !insecure, authConfig)
+	kerbClient, result, err := loginWithKerberosSession(targetURL, authHost, insecure)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Kerberos: %w", err)
-	}
-	defer kerbClient.Close()
-
-	// Configure OTP provider for 2FA support
-	kerbClient.SetOTPProvider(GetOTPProvider())
-
-	// Configure WebAuthn provider for FIDO2 2FA support
-	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferredMethod(GetPreferredMethod())
-
-	logPrintln("Logging in with Kerberos...")
-	result, err := kerbClient.LoginWithKerberos(targetURL, authHost, !insecure)
-	if err != nil {
-		return fmt.Errorf("login failed: %w", err)
+		return err
 	}
 
 	output := saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result)
