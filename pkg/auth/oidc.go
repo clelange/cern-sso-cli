@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -25,7 +24,6 @@ type OIDCConfig struct {
 	ClientID     string
 	RedirectURI  string
 	VerifyCert   bool
-	Quiet        bool
 }
 
 // TokenResponse represents an OIDC token response.
@@ -36,6 +34,30 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 	Scope        string `json:"scope,omitempty"`
 }
+
+// DeviceAuthorizationPrompt contains the user-facing details needed to complete device login.
+type DeviceAuthorizationPrompt struct {
+	UserCode                string
+	VerificationURI         string
+	VerificationURIComplete string
+}
+
+// DeviceAuthorizationSession tracks device authorization state while polling for a token.
+type DeviceAuthorizationSession struct {
+	Prompt       DeviceAuthorizationPrompt
+	client       *http.Client
+	clientID     string
+	codeVerifier string
+	deviceCode   string
+	tokenURL     string
+	pollInterval time.Duration
+	expiresAt    time.Time
+}
+
+var (
+	oidcTimeNow = time.Now
+	oidcSleep   = time.Sleep
+)
 
 // AuthorizationCodeFlow performs the OAuth2 Authorization Code flow with Kerberos.
 func AuthorizationCodeFlow(kerbClient *KerberosClient, cfg OIDCConfig) (string, error) {
@@ -104,10 +126,10 @@ func AuthorizationCodeFlow(kerbClient *KerberosClient, cfg OIDCConfig) (string, 
 	return tokenResp.AccessToken, nil
 }
 
-// DeviceAuthorizationFlow performs the OAuth2 Device Authorization Grant flow.
+// StartDeviceAuthorization initializes the OAuth2 Device Authorization Grant flow.
 //
 //nolint:cyclop // OAuth device flow with polling and multiple error conditions
-func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
+func StartDeviceAuthorization(cfg OIDCConfig) (*DeviceAuthorizationSession, error) {
 	// Generate PKCE values
 	codeVerifier := generateCodeVerifier()
 	codeChallenge := generateCodeChallenge(codeVerifier)
@@ -154,16 +176,6 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 		return nil, err
 	}
 
-	// Print instructions (even in quiet mode - user needs them to complete auth)
-	_, _ = fmt.Fprintln(os.Stderr, "CERN Single Sign-On")
-	_, _ = fmt.Fprintln(os.Stderr)
-	_, _ = fmt.Fprintf(os.Stderr, "On your tablet, phone or computer, go to:\n    %s\n", deviceResp.VerificationURI)
-	_, _ = fmt.Fprintf(os.Stderr, "and enter the following code:\n    %s\n\n", deviceResp.UserCode)
-	_, _ = fmt.Fprintf(os.Stderr, "You may also open the following link directly:\n    %s\n\n", deviceResp.VerificationURIComplete)
-	if !cfg.Quiet {
-		_, _ = fmt.Fprintln(os.Stderr, "Waiting for login...")
-	}
-
 	// Set up polling with timeout
 	tokenURL := fmt.Sprintf(
 		"https://%s/auth/realms/%s/protocol/openid-connect/token",
@@ -176,21 +188,51 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 	}
 
 	// Calculate expiry time
-	expiresAt := time.Now().Add(time.Duration(deviceResp.ExpiresIn) * time.Second)
+	expiresAt := oidcTimeNow().Add(time.Duration(deviceResp.ExpiresIn) * time.Second)
 
+	return &DeviceAuthorizationSession{
+		Prompt: DeviceAuthorizationPrompt{
+			UserCode:                deviceResp.UserCode,
+			VerificationURI:         deviceResp.VerificationURI,
+			VerificationURIComplete: deviceResp.VerificationURIComplete,
+		},
+		client:       client,
+		clientID:     cfg.ClientID,
+		codeVerifier: codeVerifier,
+		deviceCode:   deviceResp.DeviceCode,
+		tokenURL:     tokenURL,
+		pollInterval: pollInterval,
+		expiresAt:    expiresAt,
+	}, nil
+}
+
+// DeviceAuthorizationFlow performs the OAuth2 Device Authorization Grant flow.
+func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
+	session, err := StartDeviceAuthorization(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.WaitForToken()
+}
+
+// WaitForToken polls the token endpoint until device login completes or expires.
+//
+//nolint:cyclop // Device polling must handle multiple OAuth error branches and retry states.
+func (s *DeviceAuthorizationSession) WaitForToken() (*TokenResponse, error) {
 	for {
 		// Check if expired
-		if time.Now().After(expiresAt) {
+		if oidcTimeNow().After(s.expiresAt) {
 			return nil, &LoginError{Message: "device authorization expired - user did not complete login in time"}
 		}
 
-		time.Sleep(pollInterval)
+		oidcSleep(s.pollInterval)
 
-		resp, err := client.PostForm(tokenURL, url.Values{
-			"client_id":     {cfg.ClientID},
+		resp, err := s.client.PostForm(s.tokenURL, url.Values{
+			"client_id":     {s.clientID},
 			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
-			"device_code":   {deviceResp.DeviceCode},
-			"code_verifier": {codeVerifier},
+			"device_code":   {s.deviceCode},
+			"code_verifier": {s.codeVerifier},
 		})
 		if err != nil {
 			// Network error - retry
@@ -224,7 +266,7 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 			continue
 		case "slow_down":
 			// Server asks us to slow down - increase interval by 5 seconds (RFC 8628)
-			pollInterval += 5 * time.Second
+			s.pollInterval += 5 * time.Second
 			continue
 		case "expired_token":
 			return nil, &LoginError{Message: "device authorization expired"}
