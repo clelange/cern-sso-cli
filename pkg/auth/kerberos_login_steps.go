@@ -14,6 +14,11 @@ import (
 	"github.com/clelange/cern-sso-cli/pkg/browser"
 )
 
+var (
+	isChromeAvailableFunc      = browser.IsChromeAvailable
+	authenticateWithChromeFunc = browser.AuthenticateWithChrome
+)
+
 type kerberosLoginPage struct {
 	body []byte
 }
@@ -38,7 +43,7 @@ func (k *KerberosClient) tryBrowserLogin(loginPage string, authHostname string) 
 		return nil, false, nil
 	}
 
-	if !browser.IsChromeAvailable() {
+	if !isChromeAvailableFunc() {
 		return nil, true, &LoginError{Message: "--browser requires Chrome or Chromium to be installed"}
 	}
 
@@ -97,7 +102,7 @@ func (k *KerberosClient) authenticateWithBrowser(
 	timeout time.Duration,
 	env map[string]string,
 ) (*LoginResult, error) {
-	browserResult, err := browser.AuthenticateWithChrome(loginPage, authHostname, timeout, env)
+	browserResult, err := authenticateWithChromeFunc(loginPage, authHostname, timeout, env)
 	if err != nil {
 		return nil, &LoginError{Message: fmt.Sprintf("browser authentication failed: %v", err)}
 	}
