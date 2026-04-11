@@ -3,7 +3,6 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 )
 
 const oidcHTTPTimeout = 60 * time.Second
@@ -117,12 +118,10 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 		cfg.AuthHostname, cfg.AuthRealm,
 	)
 
-	client := &http.Client{
-		Timeout: oidcHTTPTimeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert}, // #nosec G402
-		},
-	}
+	client := httpclient.New(httpclient.Config{
+		Timeout:    oidcHTTPTimeout,
+		VerifyCert: cfg.VerifyCert,
+	})
 
 	resp, err := client.PostForm(deviceURL, url.Values{
 		"client_id":             {cfg.ClientID},
@@ -248,12 +247,10 @@ func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenRespons
 		cfg.AuthHostname, cfg.AuthRealm,
 	)
 
-	client := &http.Client{
-		Timeout: oidcHTTPTimeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert}, // #nosec G402
-		},
-	}
+	client := httpclient.New(httpclient.Config{
+		Timeout:    oidcHTTPTimeout,
+		VerifyCert: cfg.VerifyCert,
+	})
 
 	resp, err := client.PostForm(tokenURL, url.Values{
 		"client_id":            {cfg.ClientID},

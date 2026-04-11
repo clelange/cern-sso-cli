@@ -1,12 +1,13 @@
 package harbor
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 )
 
 const httpTimeout = 30 * time.Second
@@ -34,12 +35,10 @@ type cliSecretResponse struct {
 
 // FetchCLISecret fetches the Harbor CLI secret using an authenticated SSO cookie set.
 func FetchCLISecret(baseURL string, cookies []*http.Cookie, verifyCerts bool) (*SecretResult, error) {
-	client := &http.Client{Timeout: httpTimeout}
-	if !verifyCerts {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
-		}
-	}
+	client := httpclient.New(httpclient.Config{
+		Timeout:    httpTimeout,
+		VerifyCert: verifyCerts,
+	})
 
 	currentUser, err := fetchCurrentUser(client, baseURL, cookies)
 	if err != nil {

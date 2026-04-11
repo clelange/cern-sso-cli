@@ -1,16 +1,16 @@
 package openshift
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+
+	"github.com/clelange/cern-sso-cli/internal/httpclient"
 )
 
 const httpTimeout = 30 * time.Second
@@ -36,21 +36,16 @@ func FetchLoginCommand(
 	verifyCerts bool,
 	logf LogFunc,
 ) (*LoginCommandResult, error) {
-	jar, err := cookiejar.New(nil)
+	jar, err := httpclient.NewJar()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
 	}
 
-	transport := &http.Transport{}
-	if !verifyCerts {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
-	}
-
-	client := &http.Client{
-		Jar:       jar,
-		Transport: transport,
-		Timeout:   httpTimeout,
-	}
+	client := httpclient.New(httpclient.Config{
+		Jar:        jar,
+		Timeout:    httpTimeout,
+		VerifyCert: verifyCerts,
+	})
 
 	oauthURL, err := url.Parse(oauthBaseURL)
 	if err != nil {
