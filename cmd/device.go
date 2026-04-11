@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -55,10 +56,16 @@ func runDevice(cmd *cobra.Command, args []string) error {
 		AuthRealm:    deviceRealm,
 		ClientID:     deviceClientID,
 		VerifyCert:   !deviceInsecure,
-		Quiet:        quiet,
 	}
 
-	token, err := auth.DeviceAuthorizationFlow(cfg)
+	session, err := auth.StartDeviceAuthorization(cfg)
+	if err != nil {
+		return fmt.Errorf("device login failed: %w", err)
+	}
+
+	renderDeviceInstructions(session.Prompt)
+
+	token, err := session.WaitForToken()
 	if err != nil {
 		return fmt.Errorf("device login failed: %w", err)
 	}
@@ -79,4 +86,15 @@ func renderDeviceOutput(token *auth.TokenResponse) error {
 		RefreshToken: token.RefreshToken,
 		Scope:        token.Scope,
 	}, lines...)
+}
+
+func renderDeviceInstructions(prompt auth.DeviceAuthorizationPrompt) {
+	_, _ = fmt.Fprintln(os.Stderr, "CERN Single Sign-On")
+	_, _ = fmt.Fprintln(os.Stderr)
+	_, _ = fmt.Fprintf(os.Stderr, "On your tablet, phone or computer, go to:\n    %s\n", prompt.VerificationURI)
+	_, _ = fmt.Fprintf(os.Stderr, "and enter the following code:\n    %s\n\n", prompt.UserCode)
+	_, _ = fmt.Fprintf(os.Stderr, "You may also open the following link directly:\n    %s\n\n", prompt.VerificationURIComplete)
+	if !quiet {
+		_, _ = fmt.Fprintln(os.Stderr, "Waiting for login...")
+	}
 }

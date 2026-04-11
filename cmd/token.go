@@ -67,7 +67,6 @@ func runToken(cmd *cobra.Command, args []string) error {
 		ClientID:     tokenClientID,
 		RedirectURI:  tokenURL,
 		VerifyCert:   !tokenInsecure,
-		Quiet:        quiet,
 	}
 
 	logPrintln("Getting access token...")
