@@ -102,14 +102,14 @@ func init() {
 // logInfo prints a formatted message if not in quiet mode.
 func logInfo(format string, args ...interface{}) {
 	if !quiet {
-		fmt.Printf(format, args...)
+		_, _ = fmt.Fprintf(os.Stderr, format, args...)
 	}
 }
 
 // logPrintln prints a message if not in quiet mode.
 func logPrintln(args ...interface{}) {
 	if !quiet {
-		fmt.Println(args...)
+		_, _ = fmt.Fprintln(os.Stderr, args...)
 	}
 }
 

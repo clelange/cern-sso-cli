@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
+
+const oidcHTTPTimeout = 60 * time.Second
 
 // OIDCConfig holds configuration for OIDC flows.
 type OIDCConfig struct {
@@ -115,6 +118,7 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 	)
 
 	client := &http.Client{
+		Timeout: oidcHTTPTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert}, // #nosec G402
 		},
@@ -152,13 +156,13 @@ func DeviceAuthorizationFlow(cfg OIDCConfig) (*TokenResponse, error) {
 	}
 
 	// Print instructions (even in quiet mode - user needs them to complete auth)
-	fmt.Println("CERN Single Sign-On")
-	fmt.Println()
-	fmt.Printf("On your tablet, phone or computer, go to:\n    %s\n", deviceResp.VerificationURI)
-	fmt.Printf("and enter the following code:\n    %s\n\n", deviceResp.UserCode)
-	fmt.Printf("You may also open the following link directly:\n    %s\n\n", deviceResp.VerificationURIComplete)
+	_, _ = fmt.Fprintln(os.Stderr, "CERN Single Sign-On")
+	_, _ = fmt.Fprintln(os.Stderr)
+	_, _ = fmt.Fprintf(os.Stderr, "On your tablet, phone or computer, go to:\n    %s\n", deviceResp.VerificationURI)
+	_, _ = fmt.Fprintf(os.Stderr, "and enter the following code:\n    %s\n\n", deviceResp.UserCode)
+	_, _ = fmt.Fprintf(os.Stderr, "You may also open the following link directly:\n    %s\n\n", deviceResp.VerificationURIComplete)
 	if !cfg.Quiet {
-		fmt.Println("Waiting for login...")
+		_, _ = fmt.Fprintln(os.Stderr, "Waiting for login...")
 	}
 
 	// Set up polling with timeout
@@ -245,6 +249,7 @@ func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenRespons
 	)
 
 	client := &http.Client{
+		Timeout: oidcHTTPTimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !cfg.VerifyCert}, // #nosec G402
 		},

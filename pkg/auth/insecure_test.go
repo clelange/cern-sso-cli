@@ -52,9 +52,7 @@ func TestNewKerberosClientWithInsecureCert(t *testing.T) {
 					tlsConfig := baseTransport.TLSClientConfig
 					if tlsConfig == nil {
 						t.Fatal("TLSClientConfig is nil")
-					}
-
-					if tlsConfig.InsecureSkipVerify != tt.wantSkip {
+					} else if tlsConfig.InsecureSkipVerify != tt.wantSkip {
 						t.Errorf("InsecureSkipVerify = %v, want %v", tlsConfig.InsecureSkipVerify, tt.wantSkip)
 					}
 				} else {

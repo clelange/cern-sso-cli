@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
@@ -17,7 +18,8 @@ import (
 )
 
 const (
-	defaultOpenShiftURL = "https://paas.cern.ch"
+	defaultOpenShiftURL  = "https://paas.cern.ch"
+	openshiftHTTPTimeout = 30 * time.Second
 )
 
 var (
@@ -110,7 +112,7 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch the token request page and parse the login command
-	loginCmd, token, server, err := fetchOpenShiftLoginCommand(oauthBaseURL, openshiftURL, cookies, !openshiftInsecure)
+	loginCmd, token, server, err := fetchOpenShiftLoginCommand(oauthBaseURL, openshiftURL, openshiftAuthHost, cookies, !openshiftInsecure)
 	if err != nil {
 		return err
 	}
@@ -137,7 +139,7 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 // fetchOpenShiftLoginCommand fetches the oc login command from OpenShift token request page.
 //
 //nolint:cyclop // Complex form parsing and submission flow
-func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http.Cookie, verifyCerts bool) (string, string, string, error) {
+func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL, authHost string, cookies []*http.Cookie, verifyCerts bool) (string, string, string, error) {
 	// Create HTTP client with cookie jar
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -152,6 +154,7 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	client := &http.Client{
 		Jar:       jar,
 		Transport: transport,
+		Timeout:   openshiftHTTPTimeout,
 	}
 
 	// Set cookies on the OAuth URL
@@ -159,7 +162,7 @@ func fetchOpenShiftLoginCommand(oauthBaseURL, clusterURL string, cookies []*http
 	jar.SetCookies(oauthURL, cookies)
 
 	// Also set cookies on auth.cern.ch for the SSO session
-	authURL, _ := url.Parse("https://auth.cern.ch")
+	authURL, _ := url.Parse("https://" + authHost)
 	jar.SetCookies(authURL, cookies)
 
 	// Step 1: Fetch the token request page (may redirect to /display?code=...)

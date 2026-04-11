@@ -110,19 +110,8 @@ func tryKeytabAuth(cfg *config.Config, keytabPath, username string, quiet bool) 
 	return cl, NormalizePrincipal(principal), nil
 }
 
-// findKeytabPath returns the keytab path from environment or default locations.
-func findKeytabPath() string {
-	// Check KRB5_KTNAME environment variable
-	if envPath := os.Getenv("KRB5_KTNAME"); envPath != "" {
-		path := envPath
-		if strings.HasPrefix(envPath, "FILE:") {
-			path = strings.TrimPrefix(envPath, "FILE:")
-		}
-		if _, err := os.Stat(path); err == nil { // #nosec G703
-			return path
-		}
-	}
-
+// findDefaultKeytabPath returns the keytab path from default locations.
+func findDefaultKeytabPath() string {
 	// Check user home directory
 	if usr, err := user.Current(); err == nil {
 		userKeytab := filepath.Join(usr.HomeDir, ".keytab")
@@ -137,6 +126,29 @@ func findKeytabPath() string {
 	}
 
 	return ""
+}
+
+func keytabPathFromEnv() (string, bool, error) {
+	envPath := os.Getenv("KRB5_KTNAME")
+	if envPath == "" {
+		return "", false, nil
+	}
+
+	path := envPath
+	switch {
+	case strings.HasPrefix(envPath, "FILE:"):
+		path = strings.TrimPrefix(envPath, "FILE:")
+	case strings.HasPrefix(envPath, "WRFILE:"):
+		path = strings.TrimPrefix(envPath, "WRFILE:")
+	case strings.Contains(envPath, ":"):
+		return "", true, fmt.Errorf("KRB5_KTNAME=%q uses an unsupported keytab type", envPath)
+	}
+
+	if _, err := os.Stat(path); err != nil { // #nosec G703 -- KRB5_KTNAME is an explicit user-provided keytab path
+		return "", true, fmt.Errorf("KRB5_KTNAME keytab not found at %s: %w", path, err)
+	}
+
+	return path, true, nil
 }
 
 // LoadKrb5Config loads Kerberos configuration from the specified source.
@@ -336,7 +348,15 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 	if authConfig.ForceKeytab {
 		ktPath := authConfig.KeytabPath
 		if ktPath == "" {
-			ktPath = findKeytabPath()
+			envPath, set, envErr := keytabPathFromEnv()
+			if set {
+				if envErr != nil {
+					return nil, envErr
+				}
+				ktPath = envPath
+			} else {
+				ktPath = findDefaultKeytabPath()
+			}
 		}
 		if ktPath == "" {
 			return nil, fmt.Errorf("--use-keytab specified but no keytab found (use --keytab, KRB5_KTNAME, or ~/.keytab)")
@@ -390,18 +410,15 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 	}
 
 	// Priority 2: Keytab via KRB5_KTNAME
-	if envPath := os.Getenv("KRB5_KTNAME"); envPath != "" {
-		path := envPath
-		if strings.HasPrefix(envPath, "FILE:") {
-			path = strings.TrimPrefix(envPath, "FILE:")
+	if path, set, envErr := keytabPathFromEnv(); set {
+		if envErr != nil {
+			return nil, envErr
 		}
-		if _, statErr := os.Stat(path); statErr == nil { // #nosec G703
-			cl, principal, err := tryKeytabAuth(cfg, path, username, authConfig.Quiet)
-			if err != nil {
-				return nil, fmt.Errorf("authentication failed with KRB5_KTNAME=%s: %w", envPath, err)
-			}
-			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
+		cl, principal, err := tryKeytabAuth(cfg, path, username, authConfig.Quiet)
+		if err != nil {
+			return nil, fmt.Errorf("authentication failed with KRB5_KTNAME=%s: %w", os.Getenv("KRB5_KTNAME"), err)
 		}
+		return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
 	}
 
 	// Priority 3: Credential cache
@@ -415,23 +432,12 @@ func NewKerberosClientWithConfig(version string, krb5ConfigSource string, krbUse
 	}
 
 	// Priority 4: Default keytab locations
-	if usr, err := user.Current(); err == nil {
-		userKeytab := filepath.Join(usr.HomeDir, ".keytab")
-		if _, statErr := os.Stat(userKeytab); statErr == nil {
-			cl, principal, err := tryKeytabAuth(cfg, userKeytab, username, authConfig.Quiet)
-			if err == nil {
-				return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
-			} else if !authConfig.Quiet {
-				fmt.Fprintf(os.Stderr, "Warning: found keytab at %s but authentication failed: %v\n", userKeytab, err)
-			}
-		}
-	}
-	if _, statErr := os.Stat("/etc/krb5.keytab"); statErr == nil {
-		cl, principal, err := tryKeytabAuth(cfg, "/etc/krb5.keytab", username, authConfig.Quiet)
+	if userKeytab := findDefaultKeytabPath(); userKeytab != "" {
+		cl, principal, err := tryKeytabAuth(cfg, userKeytab, username, authConfig.Quiet)
 		if err == nil {
 			return newKerberosClientFromKrbClientWithUser(cl, version, verifyCert, principal)
 		} else if !authConfig.Quiet {
-			fmt.Fprintf(os.Stderr, "Warning: found keytab at /etc/krb5.keytab but authentication failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: found keytab at %s but authentication failed: %v\n", userKeytab, err)
 		}
 	}
 
@@ -508,6 +514,7 @@ func newKerberosClientFromKrbClientWithUser(cl *client.Client, version string, v
 	httpClient := &http.Client{
 		Jar:       jar,
 		Transport: customTransport,
+		Timeout:   oidcHTTPTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Don't follow redirects automatically
 		},
@@ -705,7 +712,7 @@ func (k *KerberosClient) refreshOTP(source string, attempt, maxRetries int) (str
 		return k.otpProvider.RefreshOTP(k.username, source, attempt, maxRetries)
 	}
 	// Fallback to interactive re-prompt
-	fmt.Printf("Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
+	_, _ = fmt.Fprintf(os.Stderr, "Invalid OTP. Try again (%d/%d): ", attempt, maxRetries)
 	var code string
 	_, err := fmt.Scanln(&code)
 	if err != nil {
@@ -1364,9 +1371,9 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 					wait := timeUntilNextTOTPWindow(timeNow())
 					if !k.authConfig.Quiet {
 						if wait >= time.Second {
-							fmt.Printf("OTP may have expired. Waiting %s for a fresh code...\n", wait.Round(time.Second))
+							_, _ = fmt.Fprintf(os.Stderr, "OTP may have expired. Waiting %s for a fresh code...\n", wait.Round(time.Second))
 						} else {
-							fmt.Println("OTP may have expired. Retrying with a fresh code...")
+							_, _ = fmt.Fprintln(os.Stderr, "OTP may have expired. Retrying with a fresh code...")
 						}
 					}
 					waitForNextTOTPWindow()
