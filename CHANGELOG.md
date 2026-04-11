@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.31.1](https://github.com/clelange/cern-sso-cli/compare/v0.31.0...v0.31.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* **auth:** avoid mutating ccache env during auth ([0b3d953](https://github.com/clelange/cern-sso-cli/commit/0b3d953917127538704f4321b4ab88822950de0d))
+* harden cli output and auth session handling ([b328b65](https://github.com/clelange/cern-sso-cli/commit/b328b65222548e1212b04c441f1488dd3edd8950))
+
 ## [0.31.0](https://github.com/clelange/cern-sso-cli/compare/v0.30.1...v0.31.0) (2026-03-31)
 
 
