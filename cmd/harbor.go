@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -77,18 +76,13 @@ func runHarbor(cmd *cobra.Command, args []string) error {
 	}
 	logInfo("Authenticated as: %s (ID: %d)\n", secretResult.Username, secretResult.UserID)
 
-	// Output
-	if harborJSON {
-		output := HarborSecretOutput{
-			Username: secretResult.Username,
-			Secret:   secretResult.Secret,
-		}
-		data, _ := json.Marshal(output)
-		fmt.Println(string(data))
-	} else {
-		logInfo("Username: %s\n", secretResult.Username)
-		fmt.Println(secretResult.Secret)
-	}
+	logInfo("Username: %s\n", secretResult.Username)
+	return renderHarborOutput(secretResult.Username, secretResult.Secret)
+}
 
-	return nil
+func renderHarborOutput(username, secret string) error {
+	return writeCommandOutput(harborJSON, HarborSecretOutput{
+		Username: username,
+		Secret:   secret,
+	}, secret)
 }

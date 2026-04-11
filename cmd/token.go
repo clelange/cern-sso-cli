@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -77,15 +76,12 @@ func runToken(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get token: %w", err)
 	}
 
-	if tokenJSON {
-		output := TokenOutput{
-			AccessToken: token,
-			TokenType:   "Bearer",
-		}
-		data, _ := json.Marshal(output)
-		fmt.Println(string(data))
-	} else {
-		fmt.Println(token)
-	}
-	return nil
+	return renderTokenOutput(token)
+}
+
+func renderTokenOutput(token string) error {
+	return writeCommandOutput(tokenJSON, TokenOutput{
+		AccessToken: token,
+		TokenType:   "Bearer",
+	}, token)
 }

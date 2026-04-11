@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -104,8 +103,7 @@ func runCookie(cmd *cobra.Command, args []string) error {
 			if ok, result, client := tryAuthCookies(cookieURL, cookieAuthHost, authCookies, cookieInsecure); ok {
 				logPrintln("Existing auth cookies worked. Skipping Kerberos authentication.")
 				output := saveCookiesFromAuth(client, cookieFile, cookieURL, cookieAuthHost, result)
-				printCookieOutput(output)
-				return nil
+				return printCookieOutput(output)
 			}
 			logPrintln("Auth cookies invalid or expired, falling back to Kerberos...")
 		}
@@ -131,12 +129,11 @@ func runCookie(cmd *cobra.Command, args []string) error {
 				if err := jar.Update(cookieFile, nil, targetDomain); err != nil {
 					logInfo("Warning: Failed to cleanup cookies: %v\n", err)
 				}
-				printCookieOutput(&CookieOutput{
+				return printCookieOutput(&CookieOutput{
 					File:  cookieFile,
 					Count: len(domainCookies),
 					User:  cookie.LoadUser(cookieFile),
 				})
-				return nil
 			}
 			logPrintln("Cookies expired or invalid. Authenticating...")
 		} else {
@@ -214,14 +211,11 @@ func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authH
 }
 
 // printCookieOutput prints the cookie output, as JSON if --json flag is set.
-func printCookieOutput(output *CookieOutput) {
+func printCookieOutput(output *CookieOutput) error {
 	if output == nil {
-		return
+		return nil
 	}
-	if cookieJSON {
-		data, _ := json.Marshal(output)
-		fmt.Println(string(data))
-	}
+	return writeCommandOutput(cookieJSON, output)
 }
 
 // authenticateWithKerberos performs full Kerberos authentication flow.
@@ -232,6 +226,5 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 	}
 
 	output := saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result)
-	printCookieOutput(output)
-	return nil
+	return printCookieOutput(output)
 }

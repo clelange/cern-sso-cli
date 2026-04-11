@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -64,23 +63,20 @@ func runDevice(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("device login failed: %w", err)
 	}
 
-	if deviceJSON {
-		output := DeviceOutput{
-			AccessToken:  token.AccessToken,
-			TokenType:    token.TokenType,
-			ExpiresIn:    token.ExpiresIn,
-			RefreshToken: token.RefreshToken,
-			Scope:        token.Scope,
-		}
-		data, _ := json.Marshal(output)
-		fmt.Println(string(data))
-	} else {
-		fmt.Println("Access Token:")
-		fmt.Println(token.AccessToken)
-		if token.RefreshToken != "" {
-			fmt.Println("\nRefresh Token:")
-			fmt.Println(token.RefreshToken)
-		}
+	return renderDeviceOutput(token)
+}
+
+func renderDeviceOutput(token *auth.TokenResponse) error {
+	lines := []string{"Access Token:", token.AccessToken}
+	if token.RefreshToken != "" {
+		lines = append(lines, "", "Refresh Token:", token.RefreshToken)
 	}
-	return nil
+
+	return writeCommandOutput(deviceJSON, DeviceOutput{
+		AccessToken:  token.AccessToken,
+		TokenType:    token.TokenType,
+		ExpiresIn:    token.ExpiresIn,
+		RefreshToken: token.RefreshToken,
+		Scope:        token.Scope,
+	}, lines...)
 }
