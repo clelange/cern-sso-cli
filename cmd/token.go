@@ -52,27 +52,15 @@ func init() {
 
 func runToken(cmd *cobra.Command, args []string) error {
 	// Validate mutually exclusive flags
-	if err := ValidateMethodFlags(); err != nil {
-		return err
-	}
-	if err := ValidateAuthMethodFlags(); err != nil {
+	if err := validateAuthCLIOptions(); err != nil {
 		return err
 	}
 
-	logPrintln("Initializing Kerberos client...")
-	authConfig := GetAuthConfig()
-	kerbClient, err := auth.NewKerberosClientWithConfig(version, krb5Config, krbUser, !tokenInsecure, authConfig)
+	kerbClient, err := newLoggedKerberosClient(tokenInsecure)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Kerberos: %w", err)
+		return err
 	}
 	defer kerbClient.Close()
-
-	// Configure OTP provider for 2FA support
-	kerbClient.SetOTPProvider(GetOTPProvider())
-
-	// Configure WebAuthn provider for FIDO2 2FA support
-	kerbClient.SetWebAuthnProvider(GetWebAuthnProvider())
-	kerbClient.SetPreferredMethod(GetPreferredMethod())
 
 	cfg := auth.OIDCConfig{
 		AuthHostname: tokenAuthHost,
