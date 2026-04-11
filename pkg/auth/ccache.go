@@ -39,21 +39,8 @@ func NormalizePrincipal(username string) string {
 // FindCCachePath locates the Kerberos credential cache file.
 // Returns empty string if no usable file-based cache is found.
 func FindCCachePath() string {
-	// Check KRB5CCNAME environment variable first
-	ccachePath := os.Getenv("KRB5CCNAME")
-	if ccachePath != "" {
-		// Handle FILE: prefix
-		if strings.HasPrefix(ccachePath, "FILE:") {
-			return strings.TrimPrefix(ccachePath, "FILE:")
-		}
-		// API: prefix (macOS) - not usable from pure Go
-		if strings.HasPrefix(ccachePath, "API:") {
-			return ""
-		}
-		// If it's a plain path, check if it exists
-		if _, err := os.Stat(ccachePath); err == nil { // #nosec G703
-			return ccachePath
-		}
+	if ccachePath := normalizeCCachePath(os.Getenv("KRB5CCNAME")); ccachePath != "" {
+		return ccachePath
 	}
 
 	// Try default paths based on platform
@@ -86,6 +73,20 @@ func FindCCachePath() string {
 	return ""
 }
 
+func normalizeCCachePath(ccachePath string) string {
+	if ccachePath == "" {
+		return ""
+	}
+	ccachePath = strings.TrimPrefix(ccachePath, "FILE:")
+	if strings.HasPrefix(ccachePath, "API:") {
+		return ""
+	}
+	if _, err := os.Stat(ccachePath); err == nil { // #nosec G703
+		return ccachePath
+	}
+	return ""
+}
+
 // getUID returns the current user's UID as a string.
 func getUID() string {
 	// Try UID environment variable first (might not be set)
@@ -102,6 +103,12 @@ func getUID() string {
 // Returns nil and an error if the cache is not found, invalid, or the TGT is expired.
 func NewClientFromCCache(cfg *config.Config) (*client.Client, error) {
 	ccachePath := FindCCachePath()
+	return NewClientFromCCachePath(cfg, ccachePath)
+}
+
+// NewClientFromCCachePath attempts to create a Kerberos client from a specific credential cache file.
+// Returns nil and an error if the cache path is empty, invalid, or the TGT is expired.
+func NewClientFromCCachePath(cfg *config.Config, ccachePath string) (*client.Client, error) {
 	if ccachePath == "" {
 		return nil, fmt.Errorf("no file-based credential cache found")
 	}

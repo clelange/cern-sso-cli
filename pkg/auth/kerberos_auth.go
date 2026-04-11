@@ -9,6 +9,15 @@ import (
 	"github.com/jcmturner/gokrb5/v8/config"
 )
 
+var (
+	isMacOSAPICCacheFunc       = IsMacOSAPICCache
+	findCacheByUsernameFunc    = FindCacheByUsername
+	convertSpecificCacheToFile = ConvertSpecificCacheToFile
+	convertAPICacheToFile      = ConvertAPICacheToFile
+	newClientFromCCacheFunc    = NewClientFromCCache
+	newClientFromCCachePath    = NewClientFromCCachePath
+)
+
 // NewKerberosClient creates a new Kerberos client with automatic authentication.
 // This is a convenience wrapper that uses automatic authentication method selection.
 // krb5ConfigSource can be "embedded" (default), "system", or a file path.
@@ -41,23 +50,22 @@ func tryPasswordAuth(cfg *config.Config, username, password string) (*client.Cli
 // tryUserCacheAuth attempts to authenticate using a specific user's cache on macOS.
 // Returns the client and principal if successful, or an error if not found/failed.
 func tryUserCacheAuth(cfg *config.Config, username string) (*client.Client, string, error) {
-	if !IsMacOSAPICCache() {
+	if !isMacOSAPICCacheFunc() {
 		return nil, "", fmt.Errorf("not macOS API cache")
 	}
 
-	cacheInfo, err := FindCacheByUsername(username)
+	cacheInfo, err := findCacheByUsernameFunc(username)
 	if err != nil {
 		return nil, "", err // Includes list of available caches
 	}
 
 	// Convert API cache to file-based cache
-	filePath, err := ConvertSpecificCacheToFile(cacheInfo)
+	filePath, err := convertSpecificCacheToFile(cacheInfo)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to convert cache: %w", err)
 	}
 
-	_ = os.Setenv("KRB5CCNAME", filePath)
-	cl, err := NewClientFromCCache(cfg)
+	cl, err := newClientFromCCachePath(cfg, filePath)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load converted cache: %w", err)
 	}
@@ -70,18 +78,17 @@ func tryUserCacheAuth(cfg *config.Config, username string) (*client.Client, stri
 // Returns the client and extracted principal if successful.
 func tryDefaultCacheAuth(cfg *config.Config) (*client.Client, string, error) {
 	// Try file-based cache directly
-	cl, err := NewClientFromCCache(cfg)
+	cl, err := newClientFromCCacheFunc(cfg)
 	if err == nil {
 		username := extractUsernameFromClient(cl)
 		return cl, username, nil
 	}
 
 	// On macOS, try to convert API cache to file cache
-	if IsMacOSAPICCache() {
-		filePath, convErr := ConvertAPICacheToFile()
+	if isMacOSAPICCacheFunc() {
+		filePath, convErr := convertAPICacheToFile()
 		if convErr == nil {
-			_ = os.Setenv("KRB5CCNAME", filePath)
-			cl, err = NewClientFromCCache(cfg)
+			cl, err = newClientFromCCachePath(cfg, filePath)
 			if err == nil {
 				username := extractUsernameFromClient(cl)
 				return cl, username, nil
