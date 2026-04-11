@@ -40,7 +40,6 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to submit Try Another Way form: %w", err)
 	}
-	defer func() { _ = selectionResp.Body.Close() }()
 
 	// Follow any redirects
 	for selectionResp.StatusCode == http.StatusFound || selectionResp.StatusCode == http.StatusSeeOther {
@@ -53,17 +52,19 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 			locURL = selectionResp.Request.URL.ResolveReference(locURL)
 			location = locURL.String()
 		}
+		closeResponseBody(selectionResp)
 		selectionResp, err = k.httpClient.Get(location) // #nosec G704
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer func() { _ = selectionResp.Body.Close() }()
 	}
 
 	selectionBody, err := io.ReadAll(selectionResp.Body)
 	if err != nil {
+		closeResponseBody(selectionResp)
 		return nil, nil, fmt.Errorf("failed to read selection page: %w", err)
 	}
+	closeResponseBody(selectionResp)
 
 	// Parse the method selection page
 	selectionPage, err := ParseMethodSelectionPage(bytes.NewReader(selectionBody))
@@ -95,7 +96,6 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to submit method selection: %w", err)
 	}
-	defer func() { _ = methodResp.Body.Close() }()
 
 	// Follow any redirects
 	for methodResp.StatusCode == http.StatusFound || methodResp.StatusCode == http.StatusSeeOther {
@@ -108,19 +108,21 @@ func (k *KerberosClient) switchTo2FAMethod(currentResp *http.Response, currentBo
 			locURL = methodResp.Request.URL.ResolveReference(locURL)
 			location = locURL.String()
 		}
+		closeResponseBody(methodResp)
 		methodResp, err = k.httpClient.Get(location) // #nosec G704
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
-		defer func() { _ = methodResp.Body.Close() }()
 	}
 
 	methodBody, err := io.ReadAll(methodResp.Body)
 	if err != nil {
+		closeResponseBody(methodResp)
 		return nil, nil, fmt.Errorf("failed to read method page: %w", err)
 	}
 
-	return methodBody, methodResp, nil
+	closeResponseBody(methodResp)
+	return methodBody, withResponseBody(methodResp, methodBody), nil
 }
 
 // getOTP retrieves an OTP code using the configured provider or interactive prompt.
