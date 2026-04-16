@@ -80,7 +80,7 @@ jobs:
         shell: bash
 
       - name: Upload binaries to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
 
@@ -105,6 +105,6 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/checksums.txt
