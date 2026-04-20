@@ -153,6 +153,72 @@ func TestDeviceAuthorizationSessionWaitForToken(t *testing.T) {
 	}
 }
 
+func TestTokenRefresh(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantErr    bool
+	}{
+		{
+			name:       "success",
+			statusCode: http.StatusOK,
+			body:       `{"access_token":"access-123","refresh_token":"refresh-456","expires_in":3600,"token_type":"Bearer"}`,
+		},
+		{
+			name:       "non-200 response",
+			statusCode: http.StatusBadRequest,
+			body:       `{"error":"invalid_grant"}`,
+			wantErr:    true,
+		},
+		{
+			name:       "malformed json",
+			statusCode: http.StatusOK,
+			body:       `not-json`,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/auth/realms/cern/protocol/openid-connect/token" {
+					t.Fatalf("unexpected path %q", r.URL.Path)
+				}
+				if err := r.ParseForm(); err != nil {
+					t.Fatalf("failed to parse form: %v", err)
+				}
+				if r.Form.Get("grant_type") != "refresh_token" {
+					t.Fatalf("expected grant_type refresh_token, got %q", r.Form.Get("grant_type"))
+				}
+				if r.Form.Get("refresh_token") != "refresh-123" {
+					t.Fatalf("expected refresh token %q, got %q", "refresh-123", r.Form.Get("refresh_token"))
+				}
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			token, err := TokenRefresh(newOIDCTestConfig(t, server.URL), "refresh-123")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("TokenRefresh failed: %v", err)
+			}
+			if token.AccessToken != "access-123" {
+				t.Fatalf("expected access token %q, got %q", "access-123", token.AccessToken)
+			}
+			if token.RefreshToken != "refresh-456" {
+				t.Fatalf("expected refresh token %q, got %q", "refresh-456", token.RefreshToken)
+			}
+		})
+	}
+}
+
 func newOIDCTestConfig(t *testing.T, serverURL string) OIDCConfig {
 	t.Helper()
 

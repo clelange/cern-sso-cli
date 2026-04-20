@@ -11,12 +11,18 @@ import (
 
 const defaultOpenShiftURL = "https://paas.cern.ch"
 
+const (
+	openShiftFlowWeb            = "web"
+	openShiftFlowDeviceExchange = "device-exchange"
+)
+
 var (
 	openshiftURL      string
 	openshiftAuthHost string
 	openshiftInsecure bool
 	openshiftJSON     bool
 	openshiftLoginCmd bool
+	openshiftFlow     string
 )
 
 // OpenShiftLoginOutput represents the JSON output for the openshift command.
@@ -49,6 +55,7 @@ func init() {
 	openshiftCmd.Flags().BoolVarP(&openshiftInsecure, "insecure", "k", false, "Skip certificate validation")
 	openshiftCmd.Flags().BoolVar(&openshiftJSON, "json", false, "Output result as JSON")
 	openshiftCmd.Flags().BoolVar(&openshiftLoginCmd, "login-command", false, "Output full oc login command instead of just the token")
+	openshiftCmd.Flags().StringVar(&openshiftFlow, "flow", openShiftFlowWeb, "OpenShift authentication flow to use: web or device-exchange")
 }
 
 //nolint:cyclop // OpenShift OAuth authentication requires multiple steps
@@ -58,6 +65,33 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := validateOpenShiftFlow(); err != nil {
+		return err
+	}
+
+	if openshiftFlow == openShiftFlowDeviceExchange {
+		return runOpenShiftDeviceExchange()
+	}
+
+	return runOpenShiftWeb()
+}
+
+func validateOpenShiftFlow() error {
+	switch openshiftFlow {
+	case openShiftFlowWeb, openShiftFlowDeviceExchange:
+	default:
+		return fmt.Errorf("invalid --flow %q: must be one of %q or %q", openshiftFlow, openShiftFlowWeb, openShiftFlowDeviceExchange)
+	}
+
+	if openshiftFlow == openShiftFlowDeviceExchange && openshiftAuthHost != defaultAuthHostname {
+		return fmt.Errorf("--auth-host cannot be used with --flow=%s; auth_url is determined from cluster DNS", openShiftFlowDeviceExchange)
+	}
+
+	return nil
+}
+
+//nolint:cyclop // OpenShift OAuth authentication requires multiple steps
+func runOpenShiftWeb() error {
 	// Derive the OAuth server URL from the base URL
 	// e.g., https://paas.cern.ch -> https://oauth-openshift.paas.cern.ch
 	parsedURL, err := url.Parse(openshiftURL)
@@ -93,6 +127,22 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 		cookies,
 		!openshiftInsecure,
 		logInfo,
+	)
+	if err != nil {
+		return err
+	}
+
+	return renderOpenShiftOutput(loginResult.Command, loginResult.Token, loginResult.Server)
+}
+
+func runOpenShiftDeviceExchange() error {
+	logInfo("Authenticating to OpenShift at %s using device-exchange flow...\n", openshiftURL)
+
+	loginResult, err := openshiftsvc.FetchLoginCommandWithDeviceExchange(
+		openshiftURL,
+		!openshiftInsecure,
+		logInfo,
+		renderDeviceInstructions,
 	)
 	if err != nil {
 		return err

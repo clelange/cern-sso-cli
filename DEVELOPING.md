@@ -202,6 +202,31 @@ Verify that:
 2. The "Sign in with Kerberos" button is clicked automatically (if using Kerberos).
 3. The flow completes and cookies are saved.
 
+### Testing OpenShift Device-Exchange Manually
+
+The OpenShift device-exchange flow is covered by mocked automated tests. Live CERN verification is manual because the device authorization step is interactive.
+
+Run the flow:
+
+```bash
+go run . openshift --flow=device-exchange
+go run . openshift --flow=device-exchange --login-command
+go run . openshift --flow=device-exchange --json
+```
+
+Verify that:
+1. The device authorization instructions are printed to stderr.
+2. Completing the browser login returns a valid OpenShift token.
+3. Running the command a second time reuses the cached login-app and audience tokens without prompting again.
+4. `--login-command` prints an `oc login` command that points at the cluster API URL.
+5. `--json` keeps the same output shape as the existing OpenShift command.
+
+To force a fresh device login, clear the OpenShift cache directory:
+
+```bash
+rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/cern-sso-cli/openshift"
+```
+
 ## Building Without WebAuthn
 
 If you don't need WebAuthn support (to avoid the libfido2 dependency):

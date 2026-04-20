@@ -282,6 +282,48 @@ func (s *DeviceAuthorizationSession) WaitForToken() (*TokenResponse, error) {
 	}
 }
 
+// TokenRefresh refreshes an OIDC token using its refresh token.
+func TokenRefresh(cfg OIDCConfig, refreshToken string) (*TokenResponse, error) {
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh token is required")
+	}
+
+	tokenURL := fmt.Sprintf(
+		"https://%s/auth/realms/%s/protocol/openid-connect/token",
+		cfg.AuthHostname, cfg.AuthRealm,
+	)
+
+	client := httpclient.New(httpclient.Config{
+		Timeout:    oidcHTTPTimeout,
+		VerifyCert: cfg.VerifyCert,
+	})
+
+	resp, err := client.PostForm(tokenURL, url.Values{
+		"client_id":     {cfg.ClientID},
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("token refresh failed: %w", err)
+	}
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	if !isSuccessStatus(resp.StatusCode) {
+		return nil, fmt.Errorf("token refresh failed with status: %d", resp.StatusCode)
+	}
+
+	var token TokenResponse
+	if err := parseJSONResponse(resp, &token); err != nil {
+		return nil, err
+	}
+
+	return &token, nil
+}
+
 // TokenExchange performs a token exchange.
 func TokenExchange(cfg OIDCConfig, subjectToken, audience string) (*TokenResponse, error) {
 	tokenURL := fmt.Sprintf(
