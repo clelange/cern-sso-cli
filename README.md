@@ -171,6 +171,12 @@ Get your API token for OpenShift/OKD at CERN:
 cern-sso-cli openshift
 ```
 
+Use the device-exchange flow for headless environments or when you want an API-driven login path:
+
+```bash
+cern-sso-cli openshift --flow=device-exchange
+```
+
 Or get the full `oc login` command:
 ```bash
 cern-sso-cli openshift --login-command
