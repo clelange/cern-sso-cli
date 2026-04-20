@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.0](https://github.com/clelange/cern-sso-cli/compare/v0.31.1...v0.32.0) (2026-04-20)
+
+
+### Features
+
+* **openshift:** add device-exchange login flow ([3fc97f1](https://github.com/clelange/cern-sso-cli/commit/3fc97f199e6eee541d48865f9fc76157bcd90e7e))
+
+
+### Bug Fixes
+
+* **openshift:** harden device-exchange flow ([4dff72c](https://github.com/clelange/cern-sso-cli/commit/4dff72c6f418c2ad9f2bf31caf0568423c2ae3df))
+
 ## [0.31.1](https://github.com/clelange/cern-sso-cli/compare/v0.31.0...v0.31.1) (2026-04-11)
 
 
