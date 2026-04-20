@@ -305,6 +305,43 @@ func TestExchangeOpenShiftAPITokenErrorsOnMissingToken(t *testing.T) {
 	}
 }
 
+func TestSanitizeCacheKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "preserves safe characters",
+			input: "Login-App_01.prod",
+			want:  "Login-App_01.prod",
+		},
+		{
+			name:  "replaces unsafe characters",
+			input: "audience/id with spaces",
+			want:  "audience_id_with_spaces",
+		},
+		{
+			name:  "maps punctuation to underscores",
+			input: "!!!",
+			want:  "___",
+		},
+		{
+			name:  "falls back for empty input",
+			input: "",
+			want:  "token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeCacheKey(tt.input); got != tt.want {
+				t.Fatalf("expected sanitized cache key %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func staticLookupTXT(tokenExchangeURL string) func(string) ([]string, error) {
 	return func(name string) ([]string, error) {
 		if name != "_config.paas.okd.cern.ch" {
