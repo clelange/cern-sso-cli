@@ -218,8 +218,9 @@ Verify that:
 1. The device authorization instructions are printed to stderr.
 2. Completing the browser login returns a valid OpenShift token.
 3. Running the command a second time reuses the cached login-app and audience tokens without prompting again.
-4. `--login-command` prints an `oc login` command that points at the cluster API URL.
-5. `--json` keeps the same output shape as the existing OpenShift command.
+4. If a cached audience token is rejected but the login-app cache is still usable, the command automatically re-exchanges and succeeds without manual cache clearing.
+5. `--login-command` prints an `oc login` command that points at the cluster API URL.
+6. `--json` keeps the same output shape as the existing OpenShift command.
 
 To force a fresh device login, clear the OpenShift cache directory:
 
