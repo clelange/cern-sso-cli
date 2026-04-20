@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,27 @@ const (
 	openShiftFlowWeb            = "web"
 	openShiftFlowDeviceExchange = "device-exchange"
 )
+
+var openShiftDeviceExchangeUnsupportedFlags = []string{
+	"auth-host",
+	"user",
+	"krb5-config",
+	"otp",
+	"otp-command",
+	"otp-keychain",
+	"otp-retries",
+	"webauthn-pin",
+	"webauthn-device",
+	"webauthn-device-index",
+	"webauthn-timeout",
+	"browser",
+	"use-otp",
+	"use-webauthn",
+	"keytab",
+	"use-password",
+	"use-keytab",
+	"use-ccache",
+}
 
 var (
 	openshiftURL      string
@@ -55,17 +77,12 @@ func init() {
 	openshiftCmd.Flags().BoolVarP(&openshiftInsecure, "insecure", "k", false, "Skip certificate validation")
 	openshiftCmd.Flags().BoolVar(&openshiftJSON, "json", false, "Output result as JSON")
 	openshiftCmd.Flags().BoolVar(&openshiftLoginCmd, "login-command", false, "Output full oc login command instead of just the token")
-	openshiftCmd.Flags().StringVar(&openshiftFlow, "flow", openShiftFlowWeb, "OpenShift authentication flow to use: web or device-exchange")
+	openshiftCmd.Flags().StringVar(&openshiftFlow, "flow", openShiftFlowWeb, "OpenShift authentication flow to use: web or device-exchange (device-exchange uses the OIDC device flow and does not support Kerberos/browser-specific auth flags)")
 }
 
 //nolint:cyclop // OpenShift OAuth authentication requires multiple steps
 func runOpenShift(cmd *cobra.Command, args []string) error {
-	// Validate mutually exclusive flags
-	if err := validateAuthCLIOptions(); err != nil {
-		return err
-	}
-
-	if err := validateOpenShiftFlow(); err != nil {
+	if err := validateOpenShiftCommand(cmd); err != nil {
 		return err
 	}
 
@@ -76,18 +93,42 @@ func runOpenShift(cmd *cobra.Command, args []string) error {
 	return runOpenShiftWeb()
 }
 
-func validateOpenShiftFlow() error {
+func validateOpenShiftCommand(cmd *cobra.Command) error {
+	if err := validateOpenShiftFlow(cmd); err != nil {
+		return err
+	}
+
+	if openshiftFlow == openShiftFlowWeb {
+		return validateAuthCLIOptions()
+	}
+
+	return nil
+}
+
+func validateOpenShiftFlow(cmd *cobra.Command) error {
 	switch openshiftFlow {
 	case openShiftFlowWeb, openShiftFlowDeviceExchange:
 	default:
 		return fmt.Errorf("invalid --flow %q: must be one of %q or %q", openshiftFlow, openShiftFlowWeb, openShiftFlowDeviceExchange)
 	}
 
-	if openshiftFlow == openShiftFlowDeviceExchange && openshiftAuthHost != defaultAuthHostname {
-		return fmt.Errorf("--auth-host cannot be used with --flow=%s; auth_url is determined from cluster DNS", openShiftFlowDeviceExchange)
+	if openshiftFlow != openShiftFlowDeviceExchange {
+		return nil
 	}
 
-	return nil
+	var unsupported []string
+	for _, name := range openShiftDeviceExchangeUnsupportedFlags {
+		flag := cmd.Flag(name)
+		if flag != nil && flag.Changed {
+			unsupported = append(unsupported, "--"+name)
+		}
+	}
+
+	if len(unsupported) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("--flow=%s does not support these flags: %s", openShiftFlowDeviceExchange, strings.Join(unsupported, ", "))
 }
 
 //nolint:cyclop // OpenShift OAuth authentication requires multiple steps

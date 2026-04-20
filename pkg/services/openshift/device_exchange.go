@@ -2,7 +2,9 @@ package openshift
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,6 +43,19 @@ type openShiftTokenResponse struct {
 	Token string `json:"token"`
 }
 
+type openShiftAPITokenExchangeError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *openShiftAPITokenExchangeError) Error() string {
+	if e.Body == "" {
+		return fmt.Sprintf("OpenShift token exchange failed with status: %d", e.StatusCode)
+	}
+
+	return fmt.Sprintf("OpenShift token exchange failed with status %d: %s", e.StatusCode, e.Body)
+}
+
 // FetchLoginCommandWithDeviceExchange authenticates to OpenShift using the CERN OIDC device flow.
 //
 //nolint:cyclop // Device-exchange flow has cache, refresh, exchange, and minting branches.
@@ -69,84 +84,161 @@ func FetchLoginCommandWithDeviceExchange(
 		return nil, err
 	}
 
-	audienceRecord, audienceErr := loadTokenCache(audienceCachePath(clusterConfig.AudienceID))
-	if audienceErr != nil && logf != nil {
-		logf("Ignoring cached audience token: %v\n", audienceErr)
-	}
-	if audienceRecord != nil && audienceRecord.isValid(deviceExchangeTimeNow()) {
-		if logf != nil {
-			logf("Reusing cached audience token for %s...\n", clusterConfig.AudienceID)
-		}
-		return mintOpenShiftLoginResult(clusterConfig, audienceRecord.AccessToken, verifyCerts)
-	}
+	audienceCache := audienceCachePath(clusterConfig.AudienceID)
+	loginCache := loginApplicationCachePath(clusterConfig.LoginApplicationID)
 
-	loginRecord, loginErr := loadTokenCache(loginApplicationCachePath(clusterConfig.LoginApplicationID))
-	if loginErr != nil && logf != nil {
-		logf("Ignoring cached login-app token: %v\n", loginErr)
-	}
-
-	var loginToken *auth.TokenResponse
-	switch {
-	case loginRecord != nil && loginRecord.isValid(deviceExchangeTimeNow()):
-		if logf != nil {
-			logf("Reusing cached login token for %s...\n", clusterConfig.LoginApplicationID)
-		}
-		loginToken = loginRecord.toTokenResponse()
-	case loginRecord != nil && loginRecord.RefreshToken != "":
-		if logf != nil {
-			logf("Refreshing cached login token for %s...\n", clusterConfig.LoginApplicationID)
-		}
-		loginToken, err = tokenRefresh(loginOIDC, loginRecord.RefreshToken)
-		if err == nil {
-			if err = saveTokenCache(loginApplicationCachePath(clusterConfig.LoginApplicationID), loginToken); err != nil {
-				return nil, err
-			}
-			break
-		}
-		if logf != nil {
-			logf("Cached login token refresh failed: %v\n", err)
-		}
-		loginToken = nil
-	}
-
-	if loginToken == nil {
-		if logf != nil {
-			logf("Starting device authorization for %s...\n", clusterConfig.LoginApplicationID)
-		}
-
-		session, err := startDeviceAuthorization(loginOIDC)
-		if err != nil {
-			return nil, fmt.Errorf("device authorization failed: %w", err)
-		}
-		if promptf != nil {
-			promptf(session.Prompt)
-		}
-
-		loginToken, err = waitForDeviceToken(session)
-		if err != nil {
-			return nil, fmt.Errorf("device authorization failed: %w", err)
-		}
-		if err := saveTokenCache(loginApplicationCachePath(clusterConfig.LoginApplicationID), loginToken); err != nil {
+	result, err := tryCachedAudienceToken(clusterConfig, audienceCache, verifyCerts, logf)
+	if err != nil {
+		var exchangeErr *openShiftAPITokenExchangeError
+		if !errors.As(err, &exchangeErr) || (exchangeErr.StatusCode != http.StatusUnauthorized && exchangeErr.StatusCode != http.StatusForbidden) {
 			return nil, err
 		}
+
+		if logf != nil {
+			logf("Cached audience token for %s was rejected with status %d; retrying with a fresh audience token...\n", clusterConfig.AudienceID, exchangeErr.StatusCode)
+		}
+		if err := removeTokenCache(audienceCache); err != nil && logf != nil {
+			logf("Failed to remove stale audience token cache %q: %v\n", audienceCache, err)
+		}
+	} else if result != nil {
+		return result, nil
+	}
+
+	loginToken, err := loadOrAcquireLoginToken(loginOIDC, loginCache, clusterConfig.LoginApplicationID, logf, promptf)
+	if err != nil {
+		return nil, err
+	}
+
+	audienceToken, err := exchangeAndCacheAudienceToken(loginOIDC, loginToken, clusterConfig.AudienceID, audienceCache, logf)
+	if err != nil {
+		return nil, err
+	}
+
+	return mintOpenShiftLoginResult(clusterConfig, audienceToken.AccessToken, verifyCerts)
+}
+
+func tryCachedAudienceToken(clusterConfig *ClusterConfig, audienceCache string, verifyCerts bool, logf LogFunc) (*LoginCommandResult, error) {
+	audienceRecord := loadCachedToken(audienceCache, "audience token", logf)
+	if audienceRecord == nil || !audienceRecord.isValid(deviceExchangeTimeNow()) {
+		return nil, nil
 	}
 
 	if logf != nil {
-		logf("Exchanging token for audience %s...\n", clusterConfig.AudienceID)
+		logf("Reusing cached audience token for %s...\n", clusterConfig.AudienceID)
 	}
 
-	audienceToken, err := tokenExchange(loginOIDC, loginToken.AccessToken, clusterConfig.AudienceID)
+	return mintOpenShiftLoginResult(clusterConfig, audienceRecord.AccessToken, verifyCerts)
+}
+
+func loadOrAcquireLoginToken(
+	loginOIDC auth.OIDCConfig,
+	loginCache string,
+	loginApplicationID string,
+	logf LogFunc,
+	promptf func(auth.DeviceAuthorizationPrompt),
+) (*auth.TokenResponse, error) {
+	loginRecord := loadCachedToken(loginCache, "login-app token", logf)
+
+	if loginToken, ok, err := tryCachedLoginToken(loginOIDC, loginCache, loginApplicationID, loginRecord, logf); ok {
+		return loginToken, err
+	}
+
+	return startDeviceAuthorizationToken(loginOIDC, loginCache, loginApplicationID, logf, promptf)
+}
+
+func tryCachedLoginToken(
+	loginOIDC auth.OIDCConfig,
+	loginCache string,
+	loginApplicationID string,
+	loginRecord *cachedToken,
+	logf LogFunc,
+) (*auth.TokenResponse, bool, error) {
+	if loginRecord == nil {
+		return nil, false, nil
+	}
+	if loginRecord.isValid(deviceExchangeTimeNow()) {
+		if logf != nil {
+			logf("Reusing cached login token for %s...\n", loginApplicationID)
+		}
+		return loginRecord.toTokenResponse(), true, nil
+	}
+	if loginRecord.RefreshToken == "" {
+		return nil, false, nil
+	}
+
+	if logf != nil {
+		logf("Refreshing cached login token for %s...\n", loginApplicationID)
+	}
+	loginToken, err := tokenRefresh(loginOIDC, loginRecord.RefreshToken)
+	if err != nil {
+		if logf != nil {
+			logf("Cached login token refresh failed: %v\n", err)
+		}
+		return nil, false, nil
+	}
+	if err := saveTokenCache(loginCache, loginToken); err != nil {
+		return nil, true, err
+	}
+
+	return loginToken, true, nil
+}
+
+func startDeviceAuthorizationToken(
+	loginOIDC auth.OIDCConfig,
+	loginCache string,
+	loginApplicationID string,
+	logf LogFunc,
+	promptf func(auth.DeviceAuthorizationPrompt),
+) (*auth.TokenResponse, error) {
+	if logf != nil {
+		logf("Starting device authorization for %s...\n", loginApplicationID)
+	}
+	session, err := startDeviceAuthorization(loginOIDC)
+	if err != nil {
+		return nil, fmt.Errorf("device authorization failed: %w", err)
+	}
+	if promptf != nil {
+		promptf(session.Prompt)
+	}
+
+	loginToken, err := waitForDeviceToken(session)
+	if err != nil {
+		return nil, fmt.Errorf("device authorization failed: %w", err)
+	}
+	if err := saveTokenCache(loginCache, loginToken); err != nil {
+		return nil, err
+	}
+
+	return loginToken, nil
+}
+
+func exchangeAndCacheAudienceToken(
+	loginOIDC auth.OIDCConfig,
+	loginToken *auth.TokenResponse,
+	audienceID string,
+	audienceCache string,
+	logf LogFunc,
+) (*auth.TokenResponse, error) {
+	if loginToken == nil || loginToken.AccessToken == "" {
+		return nil, fmt.Errorf("login token is required to exchange OpenShift audience token")
+	}
+
+	if logf != nil {
+		logf("Exchanging token for audience %s...\n", audienceID)
+	}
+
+	audienceToken, err := tokenExchange(loginOIDC, loginToken.AccessToken, audienceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange token for OpenShift audience: %w", err)
 	}
 	if audienceToken.AccessToken == "" {
 		return nil, fmt.Errorf("token exchange response missing access token")
 	}
-	if err := saveTokenCache(audienceCachePath(clusterConfig.AudienceID), audienceToken); err != nil {
+	if err := saveTokenCache(audienceCache, audienceToken); err != nil {
 		return nil, err
 	}
 
-	return mintOpenShiftLoginResult(clusterConfig, audienceToken.AccessToken, verifyCerts)
+	return audienceToken, nil
 }
 
 func mintOpenShiftLoginResult(clusterConfig *ClusterConfig, accessToken string, verifyCerts bool) (*LoginCommandResult, error) {
@@ -198,7 +290,12 @@ func exchangeOpenShiftAPIToken(tokenExchangeURL string, accessToken string, veri
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("OpenShift token exchange failed with status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		bodyText := strings.TrimSpace(string(body))
+		return "", &openShiftAPITokenExchangeError{
+			StatusCode: resp.StatusCode,
+			Body:       bodyText,
+		}
 	}
 
 	var response openShiftTokenResponse
@@ -251,6 +348,18 @@ func loadTokenCache(path string) (*cachedToken, error) {
 	return &record, nil
 }
 
+func loadCachedToken(path string, description string, logf LogFunc) *cachedToken {
+	record, err := loadTokenCache(path)
+	if err != nil {
+		if logf != nil {
+			logf("Ignoring cached %s: %v\n", description, err)
+		}
+		return nil
+	}
+
+	return record
+}
+
 func saveTokenCache(path string, token *auth.TokenResponse) error {
 	if token == nil {
 		return fmt.Errorf("token is required")
@@ -275,6 +384,14 @@ func saveTokenCache(path string, token *auth.TokenResponse) error {
 
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write cache %q: %w", path, err)
+	}
+
+	return nil
+}
+
+func removeTokenCache(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove cache %q: %w", path, err)
 	}
 
 	return nil

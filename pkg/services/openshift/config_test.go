@@ -12,7 +12,7 @@ func TestLookupClusterConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		records []string
-		err     bool
+		wantErr string
 	}{
 		{
 			name: "valid config with extra records",
@@ -33,7 +33,7 @@ func TestLookupClusterConfig(t *testing.T) {
 				"login_application_id=okd4-sso-login-application",
 				"auth_url=https://auth.cern.ch/auth/realms/cern",
 			},
-			err: true,
+			wantErr: `cluster config missing required field "audience_id"`,
 		},
 		{
 			name: "malformed auth url",
@@ -44,7 +44,7 @@ func TestLookupClusterConfig(t *testing.T) {
 				"login_application_id=okd4-sso-login-application",
 				"auth_url=https://auth.cern.ch/not-a-realm",
 			},
-			err: true,
+			wantErr: `invalid auth_url "https://auth.cern.ch/not-a-realm": expected /auth/realms/<realm>`,
 		},
 	}
 
@@ -58,9 +58,12 @@ func TestLookupClusterConfig(t *testing.T) {
 			}
 
 			cfg, err := LookupClusterConfig("paas")
-			if tt.err {
+			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+				}
+				if err.Error() != tt.wantErr {
+					t.Fatalf("expected error %q, got %q", tt.wantErr, err.Error())
 				}
 				return
 			}

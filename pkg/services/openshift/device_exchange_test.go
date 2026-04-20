@@ -5,13 +5,21 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 )
 
-func TestFetchLoginCommandWithDeviceExchangeUsesCachedAudienceToken(t *testing.T) {
+type deviceExchangeTestOverrides struct {
+	cacheDir string
+	now      func() time.Time
+}
+
+func setupDeviceExchangeTest(t *testing.T, opts deviceExchangeTestOverrides) {
+	t.Helper()
+
 	oldLookupTXT := lookupTXT
 	oldNow := deviceExchangeTimeNow
 	oldUserCache := deviceExchangeUserCache
@@ -19,7 +27,8 @@ func TestFetchLoginCommandWithDeviceExchangeUsesCachedAudienceToken(t *testing.T
 	oldWait := waitForDeviceToken
 	oldExchange := tokenExchange
 	oldRefresh := tokenRefresh
-	defer func() {
+
+	t.Cleanup(func() {
 		lookupTXT = oldLookupTXT
 		deviceExchangeTimeNow = oldNow
 		deviceExchangeUserCache = oldUserCache
@@ -27,13 +36,23 @@ func TestFetchLoginCommandWithDeviceExchangeUsesCachedAudienceToken(t *testing.T
 		waitForDeviceToken = oldWait
 		tokenExchange = oldExchange
 		tokenRefresh = oldRefresh
-	}()
+	})
 
-	cacheDir := t.TempDir()
-	deviceExchangeUserCache = func() (string, error) { return cacheDir, nil }
+	if opts.cacheDir == "" {
+		opts.cacheDir = t.TempDir()
+	}
+	deviceExchangeUserCache = func() (string, error) { return opts.cacheDir, nil }
 
+	if opts.now != nil {
+		deviceExchangeTimeNow = opts.now
+	}
+}
+
+func TestFetchLoginCommandWithDeviceExchangeUsesCachedAudienceToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	deviceExchangeTimeNow = func() time.Time { return now }
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer audience-access" {
@@ -84,29 +103,219 @@ func TestFetchLoginCommandWithDeviceExchangeUsesCachedAudienceToken(t *testing.T
 	}
 }
 
-func TestFetchLoginCommandWithDeviceExchangeRefreshesLoginTokenAndCachesResults(t *testing.T) {
-	oldLookupTXT := lookupTXT
-	oldNow := deviceExchangeTimeNow
-	oldUserCache := deviceExchangeUserCache
-	oldStart := startDeviceAuthorization
-	oldWait := waitForDeviceToken
-	oldExchange := tokenExchange
-	oldRefresh := tokenRefresh
-	defer func() {
-		lookupTXT = oldLookupTXT
-		deviceExchangeTimeNow = oldNow
-		deviceExchangeUserCache = oldUserCache
-		startDeviceAuthorization = oldStart
-		waitForDeviceToken = oldWait
-		tokenExchange = oldExchange
-		tokenRefresh = oldRefresh
-	}()
-
-	cacheDir := t.TempDir()
-	deviceExchangeUserCache = func() (string, error) { return cacheDir, nil }
-
+func TestFetchLoginCommandWithDeviceExchangeRecoversFromRejectedCachedAudienceToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	deviceExchangeTimeNow = func() time.Time { return now }
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
+
+	if err := saveTokenCache(audienceCachePath("paas_id"), &auth.TokenResponse{
+		AccessToken: "stale-audience",
+		ExpiresIn:   4 * 3600,
+	}); err != nil {
+		t.Fatalf("failed to seed audience cache: %v", err)
+	}
+	if err := saveTokenCache(loginApplicationCachePath("okd4-sso-login-application"), &auth.TokenResponse{
+		AccessToken: "cached-login",
+		ExpiresIn:   3600,
+	}); err != nil {
+		t.Fatalf("failed to seed login cache: %v", err)
+	}
+
+	mintCalls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mintCalls++
+		switch mintCalls {
+		case 1:
+			if got := r.Header.Get("Authorization"); got != "Bearer stale-audience" {
+				t.Fatalf("expected Authorization header %q, got %q", "Bearer stale-audience", got)
+			}
+			http.Error(w, "stale token", http.StatusUnauthorized)
+		case 2:
+			if got := r.Header.Get("Authorization"); got != "Bearer fresh-audience" {
+				t.Fatalf("expected Authorization header %q, got %q", "Bearer fresh-audience", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "sha256~api-token"})
+		default:
+			t.Fatalf("unexpected mint attempt %d", mintCalls)
+		}
+	}))
+	defer server.Close()
+
+	lookupTXT = staticLookupTXT(server.URL)
+	startDeviceAuthorization = func(auth.OIDCConfig) (*auth.DeviceAuthorizationSession, error) {
+		t.Fatal("device authorization should not start during audience-token recovery")
+		return nil, nil
+	}
+	waitForDeviceToken = func(*auth.DeviceAuthorizationSession) (*auth.TokenResponse, error) {
+		t.Fatal("WaitForToken should not be called during audience-token recovery")
+		return nil, nil
+	}
+
+	refreshCalls := 0
+	tokenRefresh = func(auth.OIDCConfig, string) (*auth.TokenResponse, error) {
+		refreshCalls++
+		t.Fatal("token refresh should not be called when login token cache is still valid")
+		return nil, nil
+	}
+
+	exchangeCalls := 0
+	tokenExchange = func(cfg auth.OIDCConfig, subjectToken string, audience string) (*auth.TokenResponse, error) {
+		exchangeCalls++
+		if subjectToken != "cached-login" {
+			t.Fatalf("unexpected subject token %q", subjectToken)
+		}
+		if audience != "paas_id" {
+			t.Fatalf("unexpected audience %q", audience)
+		}
+		return &auth.TokenResponse{
+			AccessToken: "fresh-audience",
+			ExpiresIn:   1800,
+		}, nil
+	}
+
+	result, err := FetchLoginCommandWithDeviceExchange("https://paas.cern.ch", false, nil, nil)
+	if err != nil {
+		t.Fatalf("FetchLoginCommandWithDeviceExchange failed: %v", err)
+	}
+
+	if result.Token != "sha256~api-token" {
+		t.Fatalf("expected OpenShift token %q, got %q", "sha256~api-token", result.Token)
+	}
+	if exchangeCalls != 1 {
+		t.Fatalf("expected %d token exchange call, got %d", 1, exchangeCalls)
+	}
+	if refreshCalls != 0 {
+		t.Fatalf("expected %d refresh calls, got %d", 0, refreshCalls)
+	}
+	if mintCalls != 2 {
+		t.Fatalf("expected %d mint attempts, got %d", 2, mintCalls)
+	}
+
+	audienceRecord, err := loadTokenCache(audienceCachePath("paas_id"))
+	if err != nil {
+		t.Fatalf("failed to load audience cache: %v", err)
+	}
+	if audienceRecord.AccessToken != "fresh-audience" {
+		t.Fatalf("expected refreshed audience token %q, got %q", "fresh-audience", audienceRecord.AccessToken)
+	}
+}
+
+func TestFetchLoginCommandWithDeviceExchangeRefreshesLoginTokenAfterRejectedCachedAudienceToken(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
+
+	if err := saveTokenCache(audienceCachePath("paas_id"), &auth.TokenResponse{
+		AccessToken: "stale-audience",
+		ExpiresIn:   4 * 3600,
+	}); err != nil {
+		t.Fatalf("failed to seed audience cache: %v", err)
+	}
+	if err := saveTokenCache(loginApplicationCachePath("okd4-sso-login-application"), &auth.TokenResponse{
+		AccessToken:  "expired-login",
+		RefreshToken: "refresh-me",
+		ExpiresIn:    60,
+	}); err != nil {
+		t.Fatalf("failed to seed login cache: %v", err)
+	}
+
+	now = now.Add(2 * time.Hour)
+
+	mintCalls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mintCalls++
+		switch mintCalls {
+		case 1:
+			if got := r.Header.Get("Authorization"); got != "Bearer stale-audience" {
+				t.Fatalf("expected Authorization header %q, got %q", "Bearer stale-audience", got)
+			}
+			http.Error(w, "forbidden", http.StatusForbidden)
+		case 2:
+			if got := r.Header.Get("Authorization"); got != "Bearer refreshed-audience" {
+				t.Fatalf("expected Authorization header %q, got %q", "Bearer refreshed-audience", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "sha256~api-token"})
+		default:
+			t.Fatalf("unexpected mint attempt %d", mintCalls)
+		}
+	}))
+	defer server.Close()
+
+	lookupTXT = staticLookupTXT(server.URL)
+	startDeviceAuthorization = func(auth.OIDCConfig) (*auth.DeviceAuthorizationSession, error) {
+		t.Fatal("device authorization should not start when login token refresh succeeds")
+		return nil, nil
+	}
+	waitForDeviceToken = func(*auth.DeviceAuthorizationSession) (*auth.TokenResponse, error) {
+		t.Fatal("WaitForToken should not be called when login token refresh succeeds")
+		return nil, nil
+	}
+
+	refreshCalls := 0
+	tokenRefresh = func(cfg auth.OIDCConfig, refreshToken string) (*auth.TokenResponse, error) {
+		refreshCalls++
+		if cfg.ClientID != "okd4-sso-login-application" {
+			t.Fatalf("unexpected client id %q", cfg.ClientID)
+		}
+		if refreshToken != "refresh-me" {
+			t.Fatalf("unexpected refresh token %q", refreshToken)
+		}
+		return &auth.TokenResponse{
+			AccessToken:  "refreshed-login",
+			RefreshToken: "refresh-new",
+			ExpiresIn:    3600,
+		}, nil
+	}
+
+	exchangeCalls := 0
+	tokenExchange = func(cfg auth.OIDCConfig, subjectToken string, audience string) (*auth.TokenResponse, error) {
+		exchangeCalls++
+		if subjectToken != "refreshed-login" {
+			t.Fatalf("unexpected subject token %q", subjectToken)
+		}
+		if audience != "paas_id" {
+			t.Fatalf("unexpected audience %q", audience)
+		}
+		return &auth.TokenResponse{
+			AccessToken: "refreshed-audience",
+			ExpiresIn:   1800,
+		}, nil
+	}
+
+	result, err := FetchLoginCommandWithDeviceExchange("https://paas.cern.ch", false, nil, nil)
+	if err != nil {
+		t.Fatalf("FetchLoginCommandWithDeviceExchange failed: %v", err)
+	}
+
+	if result.Token != "sha256~api-token" {
+		t.Fatalf("expected OpenShift token %q, got %q", "sha256~api-token", result.Token)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected %d refresh call, got %d", 1, refreshCalls)
+	}
+	if exchangeCalls != 1 {
+		t.Fatalf("expected %d token exchange call, got %d", 1, exchangeCalls)
+	}
+	if mintCalls != 2 {
+		t.Fatalf("expected %d mint attempts, got %d", 2, mintCalls)
+	}
+
+	loginRecord, err := loadTokenCache(loginApplicationCachePath("okd4-sso-login-application"))
+	if err != nil {
+		t.Fatalf("failed to load login cache: %v", err)
+	}
+	if loginRecord.AccessToken != "refreshed-login" {
+		t.Fatalf("expected refreshed login token %q, got %q", "refreshed-login", loginRecord.AccessToken)
+	}
+}
+
+func TestFetchLoginCommandWithDeviceExchangeRefreshesLoginTokenAndCachesResults(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
 
 	if err := saveTokenCache(loginApplicationCachePath("okd4-sso-login-application"), &auth.TokenResponse{
 		AccessToken:  "expired-login",
@@ -189,28 +398,10 @@ func TestFetchLoginCommandWithDeviceExchangeRefreshesLoginTokenAndCachesResults(
 }
 
 func TestFetchLoginCommandWithDeviceExchangeFallsBackToDeviceAuthorizationWhenRefreshFails(t *testing.T) {
-	oldLookupTXT := lookupTXT
-	oldNow := deviceExchangeTimeNow
-	oldUserCache := deviceExchangeUserCache
-	oldStart := startDeviceAuthorization
-	oldWait := waitForDeviceToken
-	oldExchange := tokenExchange
-	oldRefresh := tokenRefresh
-	defer func() {
-		lookupTXT = oldLookupTXT
-		deviceExchangeTimeNow = oldNow
-		deviceExchangeUserCache = oldUserCache
-		startDeviceAuthorization = oldStart
-		waitForDeviceToken = oldWait
-		tokenExchange = oldExchange
-		tokenRefresh = oldRefresh
-	}()
-
-	cacheDir := t.TempDir()
-	deviceExchangeUserCache = func() (string, error) { return cacheDir, nil }
-
 	now := time.Unix(1_700_000_000, 0)
-	deviceExchangeTimeNow = func() time.Time { return now }
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
 
 	if err := saveTokenCache(loginApplicationCachePath("okd4-sso-login-application"), &auth.TokenResponse{
 		AccessToken:  "expired-login",
@@ -283,14 +474,87 @@ func TestFetchLoginCommandWithDeviceExchangeFallsBackToDeviceAuthorizationWhenRe
 	}
 }
 
+func TestFetchLoginCommandWithDeviceExchangeDoesNotRetryNonAuthAudienceMintFailures(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	setupDeviceExchangeTest(t, deviceExchangeTestOverrides{
+		now: func() time.Time { return now },
+	})
+
+	if err := saveTokenCache(audienceCachePath("paas_id"), &auth.TokenResponse{
+		AccessToken: "stale-audience",
+		ExpiresIn:   3600,
+	}); err != nil {
+		t.Fatalf("failed to seed audience cache: %v", err)
+	}
+
+	mintCalls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mintCalls++
+		http.Error(w, "upstream failed", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	lookupTXT = staticLookupTXT(server.URL)
+	startDeviceAuthorization = func(auth.OIDCConfig) (*auth.DeviceAuthorizationSession, error) {
+		t.Fatal("device authorization should not start for non-auth mint failures")
+		return nil, nil
+	}
+	waitForDeviceToken = func(*auth.DeviceAuthorizationSession) (*auth.TokenResponse, error) {
+		t.Fatal("WaitForToken should not be called for non-auth mint failures")
+		return nil, nil
+	}
+	tokenExchange = func(auth.OIDCConfig, string, string) (*auth.TokenResponse, error) {
+		t.Fatal("token exchange should not run for non-auth mint failures")
+		return nil, nil
+	}
+	tokenRefresh = func(auth.OIDCConfig, string) (*auth.TokenResponse, error) {
+		t.Fatal("token refresh should not run for non-auth mint failures")
+		return nil, nil
+	}
+
+	_, err := FetchLoginCommandWithDeviceExchange("https://paas.cern.ch", false, nil, nil)
+	if err == nil {
+		t.Fatal("expected mint failure")
+	}
+	if mintCalls != 1 {
+		t.Fatalf("expected %d mint attempt, got %d", 1, mintCalls)
+	}
+
+	var exchangeErr *openShiftAPITokenExchangeError
+	if !errors.As(err, &exchangeErr) {
+		t.Fatalf("expected OpenShift token exchange error, got %T", err)
+	}
+	if exchangeErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, exchangeErr.StatusCode)
+	}
+	if exchangeErr.Body != "upstream failed" {
+		t.Fatalf("expected response body %q, got %q", "upstream failed", exchangeErr.Body)
+	}
+}
+
 func TestExchangeOpenShiftAPITokenErrorsOnBadResponse(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadGateway)
 	}))
 	defer server.Close()
 
-	if _, err := exchangeOpenShiftAPIToken(server.URL, "access-token", false); err == nil {
+	_, err := exchangeOpenShiftAPIToken(server.URL, "access-token", false)
+	if err == nil {
 		t.Fatal("expected token exchange error for bad status")
+	}
+
+	var exchangeErr *openShiftAPITokenExchangeError
+	if !errors.As(err, &exchangeErr) {
+		t.Fatalf("expected OpenShift token exchange error, got %T", err)
+	}
+	if exchangeErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, exchangeErr.StatusCode)
+	}
+	if exchangeErr.Body != "bad request" {
+		t.Fatalf("expected response body %q, got %q", "bad request", exchangeErr.Body)
+	}
+	if !strings.Contains(err.Error(), "bad request") {
+		t.Fatalf("expected error to include response body, got %q", err.Error())
 	}
 }
 

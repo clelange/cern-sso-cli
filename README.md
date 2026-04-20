@@ -177,6 +177,9 @@ Use the device-exchange flow for headless environments or when you want an API-d
 cern-sso-cli openshift --flow=device-exchange
 ```
 
+The device-exchange flow caches login-app and audience tokens in `${XDG_CACHE_HOME:-$HOME/.cache}/cern-sso-cli/openshift`.
+It uses the OIDC device flow and does not support Kerberos/browser-specific auth flags such as `--auth-host`, `--user`, `--use-keytab`, or `--browser`.
+
 Or get the full `oc login` command:
 ```bash
 cern-sso-cli openshift --login-command

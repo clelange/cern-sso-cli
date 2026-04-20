@@ -49,26 +49,34 @@ func LookupClusterConfig(clusterName string) (*ClusterConfig, error) {
 
 // Validate verifies that the required cluster settings are present and plausible.
 func (c *ClusterConfig) Validate() error {
-	required := map[string]string{
-		"api_url":              c.APIURL,
-		"token_exchange_url":   c.TokenExchangeURL,
-		"audience_id":          c.AudienceID,
-		"login_application_id": c.LoginApplicationID,
-		"auth_url":             c.AuthURL,
+	requiredFields := []struct {
+		name  string
+		value string
+	}{
+		{name: "api_url", value: c.APIURL},
+		{name: "token_exchange_url", value: c.TokenExchangeURL},
+		{name: "audience_id", value: c.AudienceID},
+		{name: "login_application_id", value: c.LoginApplicationID},
+		{name: "auth_url", value: c.AuthURL},
 	}
 
-	for field, value := range required {
-		if strings.TrimSpace(value) == "" {
-			return fmt.Errorf("cluster config missing required field %q", field)
+	for _, field := range requiredFields {
+		if strings.TrimSpace(field.value) == "" {
+			return fmt.Errorf("cluster config missing required field %q", field.name)
 		}
 	}
 
-	for field, value := range map[string]string{
-		"api_url":            c.APIURL,
-		"token_exchange_url": c.TokenExchangeURL,
-		"auth_url":           c.AuthURL,
-	} {
-		if err := validateHTTPSURL(field, value); err != nil {
+	urlFields := []struct {
+		name  string
+		value string
+	}{
+		{name: "api_url", value: c.APIURL},
+		{name: "token_exchange_url", value: c.TokenExchangeURL},
+		{name: "auth_url", value: c.AuthURL},
+	}
+
+	for _, field := range urlFields {
+		if err := validateHTTPSURL(field.name, field.value); err != nil {
 			return err
 		}
 	}
