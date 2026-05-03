@@ -74,6 +74,43 @@ func TestParseSAMLForm(t *testing.T) {
 	}
 }
 
+func TestParseSAMLFormSelectsFormWithSAMLInput(t *testing.T) {
+	html := `
+	<html>
+		<body>
+			<form action="/search" method="get">
+				<input name="q" value="not-saml" />
+			</form>
+			<form action="https://auth.cern.ch/auth/realms/cern/protocol/saml" method="post">
+				<input type="hidden" name="RelayState" value="state123" />
+				<input type="hidden" name="SAMLRequest" value="request456" />
+			</form>
+		</body>
+	</html>`
+
+	action, data, err := ParseSAMLForm(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseSAMLForm failed: %v", err)
+	}
+
+	expectedAction := "https://auth.cern.ch/auth/realms/cern/protocol/saml"
+	if action != expectedAction {
+		t.Errorf("Expected action %q, got %q", expectedAction, action)
+	}
+
+	if data.Get("SAMLRequest") != "request456" {
+		t.Errorf("Expected SAMLRequest %q, got %q", "request456", data.Get("SAMLRequest"))
+	}
+
+	if data.Get("RelayState") != "state123" {
+		t.Errorf("Expected RelayState %q, got %q", "state123", data.Get("RelayState"))
+	}
+
+	if data.Get("q") != "" {
+		t.Errorf("Expected non-SAML form input to be ignored, got q=%q", data.Get("q"))
+	}
+}
+
 func TestParseGitLabOIDCForm(t *testing.T) {
 	html := `
 	<html>

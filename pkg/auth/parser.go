@@ -95,31 +95,42 @@ func ParseSAMLForm(r io.Reader) (action string, data url.Values, err error) {
 		return "", nil, err
 	}
 
-	form := doc.Find("form")
-	if form.Length() == 0 {
+	forms := doc.Find("form")
+	if forms.Length() == 0 {
 		return "", nil, errors.New("no form found in response")
 	}
 
-	action, _ = form.Attr("action")
-	data = make(url.Values)
-	isSAML := false
+	var samlData url.Values
+	var samlAction string
 
-	form.Find("input").Each(func(i int, s *goquery.Selection) {
-		name, _ := s.Attr("name")
-		value, _ := s.Attr("value")
-		if name != "" {
-			data.Set(name, value)
-			if name == "SAMLResponse" || name == "SAMLRequest" {
-				isSAML = true
+	forms.EachWithBreak(func(_ int, form *goquery.Selection) bool {
+		formData := make(url.Values)
+		isSAML := false
+
+		form.Find("input").Each(func(_ int, s *goquery.Selection) {
+			name, _ := s.Attr("name")
+			value, _ := s.Attr("value")
+			if name != "" {
+				formData.Set(name, value)
+				if name == "SAMLResponse" || name == "SAMLRequest" {
+					isSAML = true
+				}
 			}
+		})
+
+		if isSAML {
+			samlAction, _ = form.Attr("action")
+			samlData = formData
 		}
+
+		return !isSAML
 	})
 
-	if !isSAML {
+	if samlData == nil {
 		return "", nil, errors.New("not a SAML form")
 	}
 
-	return action, data, nil
+	return samlAction, samlData, nil
 }
 
 // PostSAML performs the SAML POST request.
