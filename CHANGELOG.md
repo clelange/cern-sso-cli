@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.1](https://github.com/clelange/cern-sso-cli/compare/v0.32.0...v0.32.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **auth:** harden SAML form handling ([bb423cb](https://github.com/clelange/cern-sso-cli/commit/bb423cb327331de4c0fa91898f607ec7016645bf))
+* **auth:** support initial SAML login bootstrap ([5667417](https://github.com/clelange/cern-sso-cli/commit/56674173eb49b2c2ddd4419180c1b1f1c20351e1))
+
 ## [0.32.0](https://github.com/clelange/cern-sso-cli/compare/v0.31.1...v0.32.0) (2026-04-20)
 
 
