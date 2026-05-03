@@ -133,6 +133,96 @@ func TestFetchKerberosLoginPageFollowsInitialSAMLRequest(t *testing.T) {
 	}
 }
 
+func TestFetchKerberosLoginPageFollowsInitialSAMLRedirectRequest(t *testing.T) {
+	kc := newLoginStepsTestClient(t)
+	defer kc.Close()
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			redirectURL := server.URL + "/auth/realms/cern/protocol/saml?SAMLRequest=request-123&RelayState=state-456"
+			http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		case "/auth/realms/cern/protocol/saml":
+			if got := r.URL.Query().Get("SAMLRequest"); got != "request-123" {
+				http.Error(w, "unexpected SAMLRequest", http.StatusBadRequest)
+				return
+			}
+			if got := r.URL.Query().Get("RelayState"); got != "state-456" {
+				http.Error(w, "unexpected RelayState", http.StatusBadRequest)
+				return
+			}
+			http.Redirect(w, r, "/auth/realms/cern/login-actions/authenticate?client_id=saml-app", http.StatusFound)
+		case "/auth/realms/cern/login-actions/authenticate":
+			_, _ = io.WriteString(w, `<html><body><a id="social-kerberos" href="/auth/kerberos">Sign in with Kerberos</a></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	page, err := kc.fetchKerberosLoginPage(server.URL+"/start", serverURL.Host)
+	if err != nil {
+		t.Fatalf("fetchKerberosLoginPage failed: %v", err)
+	}
+
+	if !strings.Contains(string(page.body), `id="social-kerberos"`) {
+		t.Fatalf("expected Kerberos login page body, got %q", string(page.body))
+	}
+}
+
+func TestFetchKerberosLoginPageIgnoresInitialSAMLFormForOtherHost(t *testing.T) {
+	kc := newLoginStepsTestClient(t)
+	defer kc.Close()
+
+	postedToOtherHost := make(chan struct{}, 1)
+	otherServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case postedToOtherHost <- struct{}{}:
+		default:
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer otherServer.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `
+			<html>
+				<body onLoad="document.forms[0].submit();">
+					<form method="post" action="`+otherServer.URL+`/auth/realms/cern/protocol/saml">
+						<input type="hidden" name="SAMLRequest" value="request-123" />
+					</form>
+				</body>
+			</html>
+		`)
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	page, err := kc.fetchKerberosLoginPage(server.URL, serverURL.Host)
+	if err != nil {
+		t.Fatalf("fetchKerberosLoginPage failed: %v", err)
+	}
+
+	select {
+	case <-postedToOtherHost:
+		t.Fatal("expected SAML form for non-auth host not to be posted")
+	default:
+	}
+	if !strings.Contains(string(page.body), `SAMLRequest`) {
+		t.Fatalf("expected original SAML form body, got %q", string(page.body))
+	}
+}
+
 func TestResolveKerberosAuthURLFollowsRedirectChain(t *testing.T) {
 	kc := newLoginStepsTestClient(t)
 	defer kc.Close()
