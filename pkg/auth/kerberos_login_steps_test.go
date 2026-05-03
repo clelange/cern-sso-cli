@@ -47,11 +47,87 @@ func TestFetchKerberosLoginPageFollowsInitialGitLabOIDC(t *testing.T) {
 	}))
 	defer server.Close()
 
-	page, err := kc.fetchKerberosLoginPage(server.URL + "/start")
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	page, err := kc.fetchKerberosLoginPage(server.URL+"/start", serverURL.Host)
 	if err != nil {
 		t.Fatalf("fetchKerberosLoginPage failed: %v", err)
 	}
 
+	if !strings.Contains(string(page.body), `id="social-kerberos"`) {
+		t.Fatalf("expected Kerberos login page body, got %q", string(page.body))
+	}
+}
+
+func TestFetchKerberosLoginPageFollowsInitialSAMLRequest(t *testing.T) {
+	kc := newLoginStepsTestClient(t)
+	defer kc.Close()
+
+	sawSessionCookie := make(chan struct{}, 1)
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: "session-123", Path: "/"})
+			http.Redirect(w, r, "/webcenter/adfAuthentication", http.StatusFound)
+		case "/webcenter/adfAuthentication":
+			if c, err := r.Cookie("JSESSIONID"); err == nil && c.Value == "session-123" {
+				select {
+				case sawSessionCookie <- struct{}{}:
+				default:
+				}
+			}
+			_, _ = io.WriteString(w, `
+				<HTML>
+					<BODY onLoad="document.forms[0].submit();">
+						<FORM METHOD="POST" ACTION="`+server.URL+`/auth/realms/cern/protocol/saml">
+							<INPUT TYPE="HIDDEN" NAME="SAMLRequest" VALUE="request-123" />
+							<noscript><input type="submit" value="Continue" /></noscript>
+						</FORM>
+					</BODY>
+				</HTML>
+			`)
+		case "/auth/realms/cern/protocol/saml":
+			if r.Method != http.MethodPost {
+				http.Error(w, "expected SAML POST", http.StatusMethodNotAllowed)
+				return
+			}
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, "failed to parse SAML form", http.StatusBadRequest)
+				return
+			}
+			if got := r.Form.Get("SAMLRequest"); got != "request-123" {
+				http.Error(w, "unexpected SAMLRequest", http.StatusBadRequest)
+				return
+			}
+			http.Redirect(w, r, "/auth/realms/cern/login-actions/authenticate?client_id=cmsonline", http.StatusFound)
+		case "/auth/realms/cern/login-actions/authenticate":
+			_, _ = io.WriteString(w, `<html><body><a id="social-kerberos" href="/auth/kerberos">Sign in with Kerberos</a></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server URL: %v", err)
+	}
+
+	page, err := kc.fetchKerberosLoginPage(server.URL+"/start", serverURL.Host)
+	if err != nil {
+		t.Fatalf("fetchKerberosLoginPage failed: %v", err)
+	}
+
+	select {
+	case <-sawSessionCookie:
+	default:
+		t.Fatal("expected session cookie to be preserved across initial redirect")
+	}
 	if !strings.Contains(string(page.body), `id="social-kerberos"`) {
 		t.Fatalf("expected Kerberos login page body, got %q", string(page.body))
 	}
