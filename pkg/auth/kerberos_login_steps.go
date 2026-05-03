@@ -114,31 +114,61 @@ func (k *KerberosClient) authenticateWithBrowser(
 	}, nil
 }
 
-func (k *KerberosClient) fetchKerberosLoginPage(loginPage string) (*kerberosLoginPage, error) {
+func (k *KerberosClient) fetchKerberosLoginPage(loginPage string, authHostname string) (*kerberosLoginPage, error) {
 	resp, err := k.httpClient.Get(loginPage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch login page: %w", err)
 	}
 
-	for resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently {
-		location := resp.Header.Get("Location")
+	resp, err = k.followInitialRedirects(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, requestURL, err := readLoginPageResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return k.prepareKerberosLoginPage(requestURL, authHostname, bodyBytes)
+}
+
+func (k *KerberosClient) followInitialRedirects(resp *http.Response) (*http.Response, error) {
+	for isRedirectStatus(resp.StatusCode) {
+		nextURL, err := responseRedirectURL(resp)
+		if err != nil {
+			closeResponseBody(resp)
+			return nil, err
+		}
 		closeResponseBody(resp)
 
-		resp, err = k.httpClient.Get(location)
+		resp, err = k.httpClient.Get(nextURL) // #nosec G704
 		if err != nil {
 			return nil, fmt.Errorf("failed to follow redirect: %w", err)
 		}
 	}
 
+	return resp, nil
+}
+
+func readLoginPageResponse(resp *http.Response) ([]byte, *url.URL, error) {
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		closeResponseBody(resp)
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	requestURL := resp.Request.URL
 	closeResponseBody(resp)
 
+	return bodyBytes, requestURL, nil
+}
+
+func (k *KerberosClient) prepareKerberosLoginPage(
+	requestURL *url.URL,
+	authHostname string,
+	bodyBytes []byte,
+) (*kerberosLoginPage, error) {
 	if strings.Contains(requestURL.Host, "login.cern.ch") {
 		return nil, &LoginError{Message: "old SSO (login.cern.ch) is not supported"}
 	}
@@ -151,6 +181,10 @@ func (k *KerberosClient) fetchKerberosLoginPage(loginPage string) (*kerberosLogi
 		if handled {
 			return oidcPage, nil
 		}
+	}
+
+	if samlPage, handled, err := k.followInitialSAML(requestURL, authHostname, bodyBytes); handled || err != nil {
+		return samlPage, err
 	}
 
 	return &kerberosLoginPage{body: bodyBytes}, nil
@@ -190,6 +224,77 @@ func (k *KerberosClient) followInitialGitLabOIDC(
 
 	closeResponseBody(oidcResp)
 	return &kerberosLoginPage{body: oidcBody}, true, nil
+}
+
+func (k *KerberosClient) followInitialSAML(
+	baseURL *url.URL,
+	authHostname string,
+	bodyBytes []byte,
+) (*kerberosLoginPage, bool, error) {
+	actionURL, data, handled := parseInitialSAMLRequest(baseURL, authHostname, bodyBytes)
+	if !handled {
+		return nil, false, nil
+	}
+
+	samlResp, err := k.httpClient.PostForm(actionURL, data)
+	if err != nil {
+		return nil, true, fmt.Errorf("failed to submit initial SAML request: %w", err)
+	}
+
+	samlResp, err = k.followInitialSAMLRedirects(samlResp)
+	if err != nil {
+		return nil, true, err
+	}
+
+	samlBody, err := io.ReadAll(samlResp.Body)
+	if err != nil {
+		closeResponseBody(samlResp)
+		return nil, true, fmt.Errorf("failed to read SAML response: %w", err)
+	}
+
+	closeResponseBody(samlResp)
+	return &kerberosLoginPage{body: samlBody}, true, nil
+}
+
+func parseInitialSAMLRequest(
+	baseURL *url.URL,
+	authHostname string,
+	bodyBytes []byte,
+) (string, url.Values, bool) {
+	action, data, err := ParseSAMLForm(bytes.NewReader(bodyBytes))
+	if err != nil || action == "" || data.Get("SAMLRequest") == "" {
+		return "", nil, false
+	}
+
+	actionURL := resolveActionURL(baseURL, action)
+	parsedActionURL, err := url.Parse(actionURL)
+	if err != nil || !strings.EqualFold(parsedActionURL.Host, authHostname) {
+		return "", nil, false
+	}
+
+	return actionURL, data, true
+}
+
+func (k *KerberosClient) followInitialSAMLRedirects(resp *http.Response) (*http.Response, error) {
+	for i := 0; i < 10 && isRedirectStatus(resp.StatusCode); i++ {
+		nextURL, err := responseRedirectURL(resp)
+		if err != nil {
+			closeResponseBody(resp)
+			return nil, fmt.Errorf("failed to parse SAML redirect location: %w", err)
+		}
+
+		closeResponseBody(resp)
+		resp, err = k.httpClient.Get(nextURL) // #nosec G704
+		if err != nil {
+			return nil, fmt.Errorf("failed to follow SAML redirect: %w", err)
+		}
+	}
+	if isRedirectStatus(resp.StatusCode) {
+		closeResponseBody(resp)
+		return nil, fmt.Errorf("too many redirects following initial SAML request")
+	}
+
+	return resp, nil
 }
 
 func (k *KerberosClient) parseKerberosAuthURL(loginPage string, authHostname string, bodyBytes []byte) (string, error) {
@@ -607,6 +712,20 @@ func isRedirectStatus(statusCode int) bool {
 	return statusCode == http.StatusFound ||
 		statusCode == http.StatusMovedPermanently ||
 		statusCode == http.StatusSeeOther
+}
+
+func responseRedirectURL(resp *http.Response) (string, error) {
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return "", fmt.Errorf("redirect response missing Location header")
+	}
+
+	nextURL, _, err := resolveRedirectLocation(resp.Request.URL, location)
+	if err != nil {
+		return "", err
+	}
+
+	return nextURL, nil
 }
 
 func resolveRedirectLocation(baseURL *url.URL, location string) (string, *url.URL, error) {

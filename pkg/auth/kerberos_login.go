@@ -198,7 +198,7 @@ func (k *KerberosClient) LoginWithKerberos(loginPage string, authHostname string
 		return result, err
 	}
 
-	initialPage, err := k.fetchKerberosLoginPage(loginPage)
+	initialPage, err := k.fetchKerberosLoginPage(loginPage, authHostname)
 	if err != nil {
 		return nil, err
 	}
