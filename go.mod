@@ -10,7 +10,7 @@ require (
 	github.com/jcmturner/gokrb5/v8 v8.4.4
 	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.54.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -31,5 +31,5 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 )
