@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -49,7 +49,7 @@ jobs:
       KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
       KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -126,7 +126,7 @@ jobs:
       KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
       KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -156,7 +156,7 @@ jobs:
     env:
       KRB5_KEYTAB: ${{ secrets.KRB5_KEYTAB }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -223,7 +223,7 @@ jobs:
   test-macos:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-go@v6
       with:
         go-version: '1.26'
@@ -247,7 +247,7 @@ jobs:
       KRB5_USERNAME: ${{ secrets.KRB5_USERNAME }}
       KRB5_PASSWORD: ${{ secrets.KRB5_PASSWORD }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
