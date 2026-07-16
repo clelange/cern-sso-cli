@@ -510,6 +510,7 @@ func (f *kerberosLoginFlow) handleWebAuthn(resp *http.Response, authBody []byte)
 	if err != nil {
 		return nil, &LoginError{Message: fmt.Sprintf("failed to parse WebAuthn form: %v", err)}
 	}
+	webauthnForm.Origin = responseOrigin(resp)
 
 	result, err := f.client.webauthnProvider.Authenticate(webauthnForm)
 	if err != nil {
@@ -535,6 +536,18 @@ func (f *kerberosLoginFlow) handleWebAuthn(resp *http.Response, authBody []byte)
 	}
 
 	return nextResp, nil
+}
+
+func responseOrigin(resp *http.Response) string {
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil ||
+		resp.Request.URL.Scheme == "" || resp.Request.URL.Host == "" {
+		return ""
+	}
+
+	return (&url.URL{
+		Scheme: resp.Request.URL.Scheme,
+		Host:   resp.Request.URL.Host,
+	}).String()
 }
 
 func (f *kerberosLoginFlow) handleOTP(authBody []byte) (*http.Response, error) {
