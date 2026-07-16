@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.2](https://github.com/clelange/cern-sso-cli/compare/v0.32.1...v0.32.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **auth:** support CERN Users Portal ([17ab389](https://github.com/clelange/cern-sso-cli/commit/17ab3890cca615bccf219b8a7b2a0a497413c2ee))
+* **auth:** support Keycloak 26.5 WebAuthn options ([4db7edc](https://github.com/clelange/cern-sso-cli/commit/4db7edc00ff330c96684a44adf98483b2de8b61c))
+
 ## [0.32.1](https://github.com/clelange/cern-sso-cli/compare/v0.32.0...v0.32.1) (2026-05-03)
 
 
