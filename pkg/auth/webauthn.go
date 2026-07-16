@@ -123,6 +123,12 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	if form == nil {
 		return nil, errors.New("webauthn form is nil")
 	}
+	if form.Challenge == "" {
+		return nil, errors.New("webauthn challenge is empty")
+	}
+	if form.RPID == "" {
+		return nil, errors.New("webauthn RP ID is empty")
+	}
 
 	// Find available FIDO2 devices
 	locs, err := libfido2.DeviceLocations()
@@ -187,8 +193,12 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	}
 	// Note: Device doesn't have a public Close method, cleanup is handled internally
 	// Build clientDataJSON (this is what the browser creates)
-	// The origin must use "https://" prefix for WebAuthn
-	origin := fmt.Sprintf("https://%s", form.RPID)
+	// The origin is the authentication page's origin. It may differ from the RP
+	// ID when credentials are scoped to a parent domain.
+	origin := form.Origin
+	if origin == "" {
+		origin = fmt.Sprintf("https://%s", form.RPID)
+	}
 	clientDataJSON := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s","crossOrigin":false}`,
 		form.Challenge, origin)
 

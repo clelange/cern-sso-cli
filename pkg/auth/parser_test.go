@@ -304,6 +304,103 @@ func TestParseTryAnotherWayForm_NotFound(t *testing.T) {
 	}
 }
 
+func TestParseWebAuthnForm(t *testing.T) {
+	tests := []struct {
+		name      string
+		script    string
+		challenge string
+	}{
+		{
+			name:      "Keycloak 26.4 single-quoted values",
+			challenge: "challenge-264",
+			script: `const input = {
+				challenge : 'challenge-264',
+				rpId : 'auth.cern.ch'
+			};`,
+		},
+		{
+			name:      "Keycloak 26.5 double-quoted values",
+			challenge: "challenge-265",
+			script: `const input = {
+				challenge : "challenge-265",
+				rpId : "auth.cern.ch"
+			};`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := `<html><body>
+				<div id="kc-form-webauthn">
+					<form id="webauth" action="/authenticate">
+						<input type="hidden" name="session_code" value="session-123">
+					</form>
+				</div>
+				<form id="authn_select">
+					<input name="authn_use_chk" value="credential-123">
+				</form>
+				<script>` + tt.script + `</script>
+			</body></html>`
+
+			form, err := ParseWebAuthnForm(strings.NewReader(html))
+			if err != nil {
+				t.Fatalf("ParseWebAuthnForm failed: %v", err)
+			}
+
+			if form.Action != "/authenticate" {
+				t.Errorf("Action = %q, expected %q", form.Action, "/authenticate")
+			}
+			if form.Challenge != tt.challenge {
+				t.Errorf("Challenge = %q, expected %q", form.Challenge, tt.challenge)
+			}
+			if form.RPID != "auth.cern.ch" {
+				t.Errorf("RPID = %q, expected %q", form.RPID, "auth.cern.ch")
+			}
+			if form.HiddenFields["session_code"] != "session-123" {
+				t.Errorf("session_code = %q, expected %q", form.HiddenFields["session_code"], "session-123")
+			}
+			if len(form.CredentialIDs) != 1 || form.CredentialIDs[0] != "credential-123" {
+				t.Errorf("CredentialIDs = %q, expected [credential-123]", form.CredentialIDs)
+			}
+		})
+	}
+}
+
+func TestParseWebAuthnFormRequiresAssertionParameters(t *testing.T) {
+	tests := []struct {
+		name      string
+		script    string
+		errorText string
+	}{
+		{
+			name:      "missing challenge",
+			script:    `const input = { rpId : "auth.cern.ch" };`,
+			errorText: "challenge not found",
+		},
+		{
+			name:      "missing RP ID",
+			script:    `const input = { challenge : "challenge-123" };`,
+			errorText: "RP ID not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := `<div id="kc-form-webauthn">
+				<form id="webauth" action="/authenticate"></form>
+			</div><script>` + tt.script + `</script>`
+
+			_, err := ParseWebAuthnForm(strings.NewReader(html))
+			if err == nil {
+				t.Fatal("expected parsing error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errorText) {
+				t.Fatalf("error = %q, expected it to contain %q", err, tt.errorText)
+			}
+		})
+	}
+}
+
 func TestParseMethodSelectionPage(t *testing.T) {
 	// HTML structure based on TryAnotherWay.html
 	html := `

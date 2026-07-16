@@ -265,12 +265,18 @@ func ParseOTPForm(r io.Reader) (*OTPForm, error) {
 // WebAuthnForm represents the structure of a Keycloak WebAuthn form.
 type WebAuthnForm struct {
 	Action        string            // Form action URL
+	Origin        string            // Origin of the page requesting the assertion
 	Challenge     string            // Base64URL-encoded challenge
 	RPID          string            // Relying Party ID
 	CredentialIDs []string          // Allowed credential IDs (base64url encoded)
 	UserHandle    string            // User handle (base64url encoded)
 	HiddenFields  map[string]string // Other hidden input fields
 }
+
+var (
+	webAuthnChallengePattern = regexp.MustCompile(`\bchallenge\s*:\s*['"]([^'"]+)['"]`)
+	webAuthnRPIDPattern      = regexp.MustCompile(`\brpId\s*:\s*['"]([^'"]+)['"]`)
+)
 
 // ParseWebAuthnForm extracts the WebAuthn form details from the CERN 2FA page.
 // Keycloak's WebAuthn page structure:
@@ -335,19 +341,17 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 	doc.Find("script").Each(func(i int, s *goquery.Selection) {
 		scriptContent := s.Text()
 
-		// Look for challenge in the input object: challenge : 'xxx'
+		// Look for challenge in the input object. Keycloak 26.5 changed these
+		// JavaScript string literals from single quotes to double quotes.
 		if strings.Contains(scriptContent, "challenge") {
-			// Pattern: challenge : 'value' or challenge: 'value'
-			challengePattern := regexp.MustCompile(`challenge\s*:\s*'([^']+)'`)
-			if matches := challengePattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
+			if matches := webAuthnChallengePattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
 				webauthnForm.Challenge = matches[1]
 			}
 		}
 
-		// Look for rpId: rpId : 'xxx'
+		// Look for rpId: rpId : 'xxx' or rpId : "xxx"
 		if strings.Contains(scriptContent, "rpId") {
-			rpIdPattern := regexp.MustCompile(`rpId\s*:\s*'([^']+)'`)
-			if matches := rpIdPattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
+			if matches := webAuthnRPIDPattern.FindStringSubmatch(scriptContent); len(matches) > 1 {
 				webauthnForm.RPID = matches[1]
 			}
 		}
@@ -365,6 +369,13 @@ func ParseWebAuthnForm(r io.Reader) (*WebAuthnForm, error) {
 			webauthnForm.RPID = rpid
 		}
 	})
+
+	if webauthnForm.Challenge == "" {
+		return nil, errors.New("WebAuthn challenge not found")
+	}
+	if webauthnForm.RPID == "" {
+		return nil, errors.New("WebAuthn RP ID not found")
+	}
 
 	return webauthnForm, nil
 }

@@ -62,6 +62,22 @@ func TestFetchKerberosLoginPageFollowsInitialGitLabOIDC(t *testing.T) {
 	}
 }
 
+func TestResponseOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://auth.cern.ch:8443/auth/realms/cern/login-actions/authenticate", nil)
+	resp := &http.Response{Request: req}
+
+	if got := responseOrigin(resp); got != "https://auth.cern.ch:8443" {
+		t.Fatalf("responseOrigin() = %q, expected %q", got, "https://auth.cern.ch:8443")
+	}
+	if got := responseOrigin(nil); got != "" {
+		t.Fatalf("responseOrigin(nil) = %q, expected empty origin", got)
+	}
+	relativeResp := &http.Response{Request: &http.Request{URL: &url.URL{Path: "/authenticate"}}}
+	if got := responseOrigin(relativeResp); got != "" {
+		t.Fatalf("responseOrigin(relative URL) = %q, expected empty origin", got)
+	}
+}
+
 func TestFetchKerberosLoginPageFollowsInitialSAMLRequest(t *testing.T) {
 	kc := newLoginStepsTestClient(t)
 	defer kc.Close()
