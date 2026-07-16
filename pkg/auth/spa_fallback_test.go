@@ -3,8 +3,64 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
+
+func TestDetectUsersPortal(t *testing.T) {
+	portalHTML := []byte(`<!doctype html><html><head><title>CERN Users Portal</title></head></html>`)
+
+	tests := []struct {
+		name      string
+		targetURL string
+		body      []byte
+		wantErr   bool
+	}{
+		{
+			name:      "current Users Portal",
+			targetURL: usersPortalRedirectURI,
+			body:      portalHTML,
+		},
+		{
+			name:      "legacy Account Management redirect",
+			targetURL: "https://account.web.cern.ch/Management/MyAccounts.aspx",
+			body:      portalHTML,
+		},
+		{
+			name:      "wrong hostname",
+			targetURL: "https://example.com/",
+			body:      portalHTML,
+			wantErr:   true,
+		},
+		{
+			name:      "wrong page",
+			targetURL: usersPortalRedirectURI,
+			body:      []byte(`<html><head><title>Other application</title></head></html>`),
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := DetectUsersPortal(tt.body, tt.targetURL)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("DetectUsersPortal() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DetectUsersPortal() unexpected error: %v", err)
+			}
+			if info.Type != SPATypeUsersPortal {
+				t.Errorf("DetectUsersPortal() type = %q, want %q", info.Type, SPATypeUsersPortal)
+			}
+			if info.ClientID != usersPortalClientID {
+				t.Errorf("DetectUsersPortal() client ID = %q, want %q", info.ClientID, usersPortalClientID)
+			}
+		})
+	}
+}
 
 func TestDetectHarbor(t *testing.T) {
 	tests := []struct {
@@ -162,7 +218,17 @@ func TestDetectOpenShift(t *testing.T) {
 }
 
 func TestDetectSPA(t *testing.T) {
-	// Test that DetectSPA tries Harbor first, then OpenShift
+	t.Run("Detects Users Portal without an API probe", func(t *testing.T) {
+		info, err := DetectSPA(http.DefaultClient, usersPortalRedirectURI,
+			[]byte(`<html><head><title>CERN Users Portal</title></head></html>`))
+		if err != nil {
+			t.Fatalf("DetectSPA() unexpected error: %v", err)
+		}
+		if info.Type != SPATypeUsersPortal {
+			t.Errorf("DetectSPA() type = %q, want %q", info.Type, SPATypeUsersPortal)
+		}
+	})
+
 	t.Run("Detects Harbor via API", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v2.0/systeminfo" {
@@ -219,6 +285,27 @@ func TestDetectSPA(t *testing.T) {
 			t.Errorf("DetectSPA() expected error for unknown SPA, got nil")
 		}
 	})
+}
+
+func TestBuildOIDCAuthorizationURL(t *testing.T) {
+	authURL := "https://auth.cern.ch/auth/realms/cern/protocol/openid-connect/auth"
+	got, err := url.Parse(buildOIDCAuthorizationURL(authURL, usersPortalClientID, usersPortalRedirectURI))
+	if err != nil {
+		t.Fatalf("failed to parse authorization URL: %v", err)
+	}
+
+	if got.Scheme != "https" || got.Host != "auth.cern.ch" || got.Path != "/auth/realms/cern/protocol/openid-connect/auth" {
+		t.Errorf("authorization endpoint = %q, want %q", got.Scheme+"://"+got.Host+got.Path, authURL)
+	}
+	if got.Query().Get("client_id") != usersPortalClientID {
+		t.Errorf("client_id = %q, want %q", got.Query().Get("client_id"), usersPortalClientID)
+	}
+	if got.Query().Get("redirect_uri") != usersPortalRedirectURI {
+		t.Errorf("redirect_uri = %q, want %q", got.Query().Get("redirect_uri"), usersPortalRedirectURI)
+	}
+	if got.Query().Get("response_type") != "code" || got.Query().Get("scope") != "openid" {
+		t.Errorf("unexpected OIDC parameters: %q", got.Query())
+	}
 }
 
 func TestGetHarborLoginPage(t *testing.T) {

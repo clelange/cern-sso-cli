@@ -13,14 +13,20 @@ import (
 
 // SPAType constants for known SPA applications
 const (
-	SPATypeUnknown   = ""
-	SPATypeHarbor    = "harbor"
-	SPATypeOpenShift = "openshift"
+	SPATypeUnknown     = ""
+	SPATypeHarbor      = "harbor"
+	SPATypeOpenShift   = "openshift"
+	SPATypeUsersPortal = "users-portal"
+
+	legacyAccountHostname  = "account.web.cern.ch"
+	usersPortalHostname    = "users-portal.web.cern.ch"
+	usersPortalClientID    = "users-portal"
+	usersPortalRedirectURI = "https://users-portal.web.cern.ch/identities/me/otherAccounts"
 )
 
 // SPAInfo contains detected SPA configuration
 type SPAInfo struct {
-	Type     string // SPATypeHarbor, SPATypeOpenShift, etc.
+	Type     string // One of the SPAType constants above
 	LoginURL string // Direct login URL that triggers OIDC flow
 	ClientID string // OIDC client ID (if extractable)
 	BaseURL  string // Base URL of the target site
@@ -37,6 +43,12 @@ type HarborSystemInfo struct {
 // Called when ParseKerberosLink fails on the landing page.
 // bodyBytes contains the HTML response from the initial request.
 func DetectSPA(client *http.Client, targetURL string, bodyBytes []byte) (*SPAInfo, error) {
+	// The Users Portal has no unauthenticated API to probe, so identify its
+	// static shell before trying network-based SPA detection.
+	if info, err := DetectUsersPortal(bodyBytes, targetURL); err == nil && info != nil {
+		return info, nil
+	}
+
 	// Try Harbor detection first
 	if info, err := DetectHarbor(client, targetURL); err == nil && info != nil {
 		return info, nil
@@ -48,6 +60,30 @@ func DetectSPA(client *http.Client, targetURL string, bodyBytes []byte) (*SPAInf
 	}
 
 	return nil, fmt.Errorf("no known SPA pattern detected")
+}
+
+// DetectUsersPortal checks for the CERN Users Portal static application shell.
+// The legacy Account Management URL redirects to this shell, so both hostnames
+// are accepted while the OIDC callback always uses the registered portal URL.
+func DetectUsersPortal(bodyBytes []byte, targetURL string) (*SPAInfo, error) {
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return nil, err
+	}
+
+	hostname := strings.ToLower(u.Hostname())
+	if hostname != usersPortalHostname && hostname != legacyAccountHostname {
+		return nil, fmt.Errorf("not the CERN Users Portal hostname")
+	}
+	if !strings.Contains(string(bodyBytes), "<title>CERN Users Portal</title>") {
+		return nil, fmt.Errorf("not the CERN Users Portal page")
+	}
+
+	return &SPAInfo{
+		Type:     SPATypeUsersPortal,
+		ClientID: usersPortalClientID,
+		BaseURL:  "https://" + usersPortalHostname,
+	}, nil
 }
 
 // DetectHarbor checks for Harbor registry indicators by probing the systeminfo API.
@@ -138,6 +174,8 @@ func GetSPALoginPage(client *http.Client, spaInfo *SPAInfo, authHostname string)
 		return getHarborLoginPage(client, spaInfo, authHostname)
 	case SPATypeOpenShift:
 		return getOpenShiftLoginPage(client, spaInfo)
+	case SPATypeUsersPortal:
+		return getUsersPortalLoginPage(client, spaInfo, authHostname)
 	default:
 		return "", nil, fmt.Errorf("unknown SPA type: %s", spaInfo.Type)
 	}
@@ -165,18 +203,36 @@ func getHarborLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname stri
 	authURL := fmt.Sprintf("https://%s/auth/realms/cern/protocol/openid-connect/auth", authHostname)
 	redirectURI := fmt.Sprintf("%s://%s/c/oidc/callback", u.Scheme, u.Host)
 
+	fullURL := buildOIDCAuthorizationURL(authURL, clientID, redirectURI)
+	return fetchOIDCLoginPage(client, fullURL, "Harbor")
+}
+
+func getUsersPortalLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname string) (string, []byte, error) {
+	clientID := spaInfo.ClientID
+	if clientID == "" {
+		clientID = usersPortalClientID
+	}
+
+	authURL := fmt.Sprintf("https://%s/auth/realms/cern/protocol/openid-connect/auth", authHostname)
+	fullURL := buildOIDCAuthorizationURL(authURL, clientID, usersPortalRedirectURI)
+	return fetchOIDCLoginPage(client, fullURL, "Users Portal")
+}
+
+func buildOIDCAuthorizationURL(authURL, clientID, redirectURI string) string {
 	params := url.Values{}
 	params.Set("client_id", clientID)
 	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", "openid")
 
-	fullURL := authURL + "?" + params.Encode()
+	return authURL + "?" + params.Encode()
+}
 
+func fetchOIDCLoginPage(client *http.Client, fullURL, service string) (string, []byte, error) {
 	// Fetch the login page
 	resp, err := client.Get(fullURL)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to fetch Harbor login page: %w", err)
+		return "", nil, fmt.Errorf("failed to fetch %s login page: %w", service, err)
 	}
 	defer func() {
 		if resp != nil && resp.Body != nil {
@@ -186,7 +242,7 @@ func getHarborLoginPage(client *http.Client, spaInfo *SPAInfo, authHostname stri
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to read Harbor login page: %w", err)
+		return "", nil, fmt.Errorf("failed to read %s login page: %w", service, err)
 	}
 
 	return resp.Request.URL.String(), body, nil
