@@ -24,12 +24,14 @@ import (
 
 const testVersion = "dev"
 
-func TestIntegration_AccountWebCERN(t *testing.T) {
+const usersPortalURL = "https://users-portal.web.cern.ch/identities/me/otherAccounts"
+
+func TestIntegration_UsersPortal(t *testing.T) {
 	skipIfNoCredentials(t)
 
-	targetURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
+	targetURL := usersPortalURL
 	authHost := "auth.cern.ch"
-	cookieFile := "test_account_cookies.txt"
+	cookieFile := "test_users_portal_cookies.txt"
 	defer os.Remove(cookieFile)
 
 	// Test cookie generation
@@ -63,7 +65,7 @@ func TestIntegration_AccountWebCERN(t *testing.T) {
 	}
 
 	// Verify cookies work with curl
-	verifyCookiesIntegration(t, cookieFile, targetURL, "Account Management")
+	verifyCookiesIntegration(t, cookieFile, targetURL, "CERN Users Portal")
 }
 
 func TestIntegration_MultiDomainCookies(t *testing.T) {
@@ -72,8 +74,8 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	cookieFile := "test_multi_domain_cookies.txt"
 	defer os.Remove(cookieFile)
 
-	// First, authenticate to account.web.cern.ch
-	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
+	// First, authenticate to the CERN Users Portal
+	portalURL := usersPortalURL
 	authHost := "auth.cern.ch"
 
 	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
@@ -81,22 +83,22 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
 
-	result, err := kerbClient.LoginWithKerberos(accountURL, authHost, true)
+	result, err := kerbClient.LoginWithKerberos(portalURL, authHost, true)
 	if err != nil {
-		t.Fatalf("Account login failed: %v", err)
+		t.Fatalf("Users Portal login failed: %v", err)
 	}
 
-	accountCookies, err := kerbClient.CollectCookies(accountURL, authHost, result)
+	portalCookies, err := kerbClient.CollectCookies(portalURL, authHost, result)
 	if err != nil {
-		t.Fatalf("Failed to collect account cookies: %v", err)
+		t.Fatalf("Failed to collect Users Portal cookies: %v", err)
 	}
-	t.Logf("Collected %d cookies for account.web.cern.ch", len(accountCookies))
+	t.Logf("Collected %d cookies for users-portal.web.cern.ch", len(portalCookies))
 
-	// Save account cookies
-	u1, _ := url.Parse(accountURL)
+	// Save Users Portal cookies
+	u1, _ := url.Parse(portalURL)
 	jar, _ := cookie.NewJar()
-	if err := jar.Save(cookieFile, accountCookies, u1.Hostname()); err != nil {
-		t.Fatalf("Failed to save account cookies: %v", err)
+	if err := jar.Save(cookieFile, portalCookies, u1.Hostname()); err != nil {
+		t.Fatalf("Failed to save Users Portal cookies: %v", err)
 	}
 	kerbClient.Close()
 
@@ -120,7 +122,7 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 	}
 	t.Logf("Collected %d cookies for gitlab.cern.ch", len(gitlabCookies))
 
-	// Update with gitlab cookies (should preserve account cookies)
+	// Update with GitLab cookies (should preserve Users Portal cookies)
 	u2, _ := url.Parse(gitlabURL)
 	if err := jar.Update(cookieFile, gitlabCookies, u2.Hostname()); err != nil {
 		t.Fatalf("Failed to update with GitLab cookies: %v", err)
@@ -132,23 +134,24 @@ func TestIntegration_MultiDomainCookies(t *testing.T) {
 		t.Fatalf("Failed to load cookies: %v", err)
 	}
 
-	accountDomainFound := false
+	usersPortalDomainFound := false
 	gitlabDomainFound := false
 	for _, c := range allCookies {
-		if strings.Contains(c.Domain, "account") || strings.Contains(c.Domain, "cern.ch") {
-			if strings.Contains(c.Domain, "account") {
-				accountDomainFound = true
-			}
+		if strings.Contains(c.Domain, "users-portal") {
+			usersPortalDomainFound = true
 		}
 		if strings.Contains(c.Domain, "gitlab") {
 			gitlabDomainFound = true
 		}
 	}
 
-	if !accountDomainFound || !gitlabDomainFound {
+	if !usersPortalDomainFound || !gitlabDomainFound {
 		t.Logf("Cookies found: %d", len(allCookies))
 		for _, c := range allCookies {
 			t.Logf("  %s: domain=%s", c.Name, c.Domain)
+		}
+		if !usersPortalDomainFound {
+			t.Errorf("Users Portal cookies not found in file")
 		}
 		if !gitlabDomainFound {
 			t.Errorf("GitLab cookies not found in file")
@@ -164,8 +167,8 @@ func TestIntegration_CookieReuse(t *testing.T) {
 	cookieFile := "test_cookie_reuse.txt"
 	defer os.Remove(cookieFile)
 
-	// First, authenticate to account.web.cern.ch to get auth.cern.ch cookies
-	accountURL := "https://account.web.cern.ch/Management/MyAccounts.aspx"
+	// First, authenticate to the Users Portal to get auth.cern.ch cookies
+	portalURL := usersPortalURL
 	authHost := "auth.cern.ch"
 
 	kerbClient, err := auth.NewKerberosClient(testVersion, "", true)
@@ -173,22 +176,22 @@ func TestIntegration_CookieReuse(t *testing.T) {
 		t.Fatalf("Failed to create Kerberos client: %v", err)
 	}
 
-	result, err := kerbClient.LoginWithKerberos(accountURL, authHost, true)
+	result, err := kerbClient.LoginWithKerberos(portalURL, authHost, true)
 	if err != nil {
-		t.Fatalf("Account login failed: %v", err)
+		t.Fatalf("Users Portal login failed: %v", err)
 	}
 
-	accountCookies, err := kerbClient.CollectCookies(accountURL, authHost, result)
+	portalCookies, err := kerbClient.CollectCookies(portalURL, authHost, result)
 	if err != nil {
-		t.Fatalf("Failed to collect account cookies: %v", err)
+		t.Fatalf("Failed to collect Users Portal cookies: %v", err)
 	}
-	t.Logf("Collected %d cookies for account.web.cern.ch (includes auth.cern.ch cookies)", len(accountCookies))
+	t.Logf("Collected %d cookies for users-portal.web.cern.ch (includes auth.cern.ch cookies)", len(portalCookies))
 
-	// Save account cookies (this includes auth.cern.ch cookies)
-	u1, _ := url.Parse(accountURL)
+	// Save Users Portal cookies (this includes auth.cern.ch cookies)
+	u1, _ := url.Parse(portalURL)
 	jar, _ := cookie.NewJar()
-	if err := jar.Save(cookieFile, accountCookies, u1.Hostname()); err != nil {
-		t.Fatalf("Failed to save account cookies: %v", err)
+	if err := jar.Save(cookieFile, portalCookies, u1.Hostname()); err != nil {
+		t.Fatalf("Failed to save Users Portal cookies: %v", err)
 	}
 	kerbClient.Close()
 
@@ -292,12 +295,12 @@ func TestIntegration_GitLabCERN(t *testing.T) {
 func TestIntegration_AuthorizationCodeFlow(t *testing.T) {
 	skipIfNoCredentials(t)
 
-	// Use account-app as a test client
+	// Use the Users Portal as a test client
 	cfg := auth.OIDCConfig{
 		AuthHostname: "auth.cern.ch",
 		AuthRealm:    "cern",
-		ClientID:     "account-app",
-		RedirectURI:  "https://account.web.cern.ch/authorization-code/callback",
+		ClientID:     "users-portal",
+		RedirectURI:  usersPortalURL,
 		VerifyCert:   true,
 	}
 

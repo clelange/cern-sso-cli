@@ -21,7 +21,7 @@ type LoginResult struct {
 // full Kerberos authentication for each new CERN subdomain.
 //
 // Example flow:
-//  1. User authenticates to account.web.cern.ch with Kerberos
+//  1. User authenticates to users-portal.web.cern.ch with Kerberos
 //  2. auth.cern.ch cookies are saved to cookies.txt
 //  3. Later, user wants to authenticate to gitlab.cern.ch
 //  4. TryLoginWithCookies reuses auth.cern.ch cookies

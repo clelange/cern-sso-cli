@@ -169,12 +169,12 @@ The integration tests verify:
 - Cookie generation and management
 - Multi-domain cookie handling
 - Authorization Code Flow (OIDC)
-- SPA fallback mechanisms (Harbor, OpenShift)
+- SPA fallback mechanisms (Users Portal, Harbor, OpenShift)
 - CLI secret extraction (Harbor)
 - Token retrieval (OpenShift)
 
 **Verified services:**
-- `account.web.cern.ch` (Standard SSO)
+- `users-portal.web.cern.ch` (Users Portal - SPA/OIDC)
 - `gitlab.cern.ch` (Standard SSO)
 - `paas.cern.ch` (OpenShift - SPA)
 - `registry.cern.ch` (Harbor - SPA/OIDC)
