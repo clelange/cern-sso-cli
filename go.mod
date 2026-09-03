@@ -3,7 +3,7 @@ module github.com/clelange/cern-sso-cli
 go 1.26.0
 
 require (
-	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f
 	github.com/chromedp/chromedp v0.16.0
 	github.com/fxamacker/cbor/v2 v2.9.3
@@ -14,7 +14,7 @@ require (
 )
 
 require (
-	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
