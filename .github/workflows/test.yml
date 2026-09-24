@@ -8,7 +8,16 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: test
+          - os: macos-latest
+            name: test-macos
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v7
 
@@ -18,27 +27,46 @@ jobs:
         go-version: '1.26'
         cache: true
 
-    - name: Install libfido2 (WebAuthn support)
+    - name: Install libfido2 on Linux
+      if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y libfido2-dev
+
+    - name: Install libfido2 on macOS
+      if: runner.os == 'macOS'
+      run: brew install libfido2
 
     - name: Install dependencies
       run: go mod download
 
     - name: Check CERN CA certificates are up to date
+      if: runner.os == 'Linux'
       run: make check-certs
 
     - name: Download CERN CA certificates
       run: make download-certs
 
-    - name: Run Unit Tests
-      run: make test
+    - name: Test CI cookie verifier
+      run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+    - name: Run unit tests with race detection
+      run: go test -race ./...
+
+    - name: Run portable unit tests without WebAuthn
+      env:
+        CGO_ENABLED: '0'
+      run: go test -tags nowebauthn ./...
+
+    - name: Run macOS keychain integration tests
+      if: runner.os == 'macOS'
+      run: go test -tags=integration -v ./pkg/auth/ -run 'TestIntegration_Keychain'
 
     - name: Verify Build
       run: make build
 
     - name: Verify Cross-Platform Builds
+      if: runner.os == 'Linux'
       run: make build-all
 
   # Integration tests using credential cache (kinit)
@@ -109,14 +137,10 @@ jobs:
         # Test cookie command with ccache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
 
-        # Verify cookies were created
-        if [ ! -f test_cookies.txt ]; then
-          echo "ERROR: Cookie file not created"
-          exit 1
-        fi
+        # Verify the saved cookies authenticate to GitLab without logging credentials.
+        python3 scripts/verify_gitlab_cookies.py test_cookies.txt
 
         echo "SUCCESS: Credential cache authentication works!"
-        cat test_cookies.txt
 
   # Integration tests using password (fallback method)
   integration-password:
@@ -199,12 +223,8 @@ jobs:
       if: env.KRB5_KEYTAB != ''
       run: |
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --keytab /tmp/test.keytab --file test_cookies.txt
-        if [ ! -f test_cookies.txt ]; then
-          echo "ERROR: Cookie file not created with --keytab"
-          exit 1
-        fi
+        python3 scripts/verify_gitlab_cookies.py test_cookies.txt
         echo "SUCCESS: --keytab authentication works!"
-        cat test_cookies.txt
 
     - name: Test --use-keytab with KRB5_KTNAME
       if: env.KRB5_KEYTAB != ''
@@ -213,30 +233,8 @@ jobs:
       run: |
         rm -f test_cookies.txt
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --use-keytab --file test_cookies.txt
-        if [ ! -f test_cookies.txt ]; then
-          echo "ERROR: Cookie file not created with --use-keytab"
-          exit 1
-        fi
+        python3 scripts/verify_gitlab_cookies.py test_cookies.txt
         echo "SUCCESS: --use-keytab with KRB5_KTNAME works!"
-
-  # Unit tests on macOS
-  test-macos:
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-go@v7
-      with:
-        go-version: '1.26'
-        cache: true
-    - name: Install libfido2 (WebAuthn support)
-      run: brew install libfido2
-    - run: go mod download
-    - run: make download-certs
-    - run: make test
-    - name: Run macOS keychain integration tests
-      run: go test -tags=integration -v ./pkg/auth/ -run 'TestIntegration_Keychain'
-    - run: make build
-    - run: make build-all
 
   # Integration tests on macOS with file-based cache
   # Note: API->file cache auto-conversion requires keychain setup which isn't available in CI
@@ -311,11 +309,7 @@ jobs:
         # Run with file-based cache
         ./cern-sso-cli cookie --url https://gitlab.cern.ch --file test_cookies.txt
 
-        # Verify cookies were created
-        if [ ! -f test_cookies.txt ]; then
-          echo "ERROR: Cookie file not created"
-          exit 1
-        fi
+        # Verify the saved cookies authenticate to GitLab without logging credentials.
+        python3 scripts/verify_gitlab_cookies.py test_cookies.txt
 
         echo "SUCCESS: macOS file-based cache works!"
-        cat test_cookies.txt
