@@ -5,12 +5,14 @@
 package auth
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -115,11 +117,66 @@ func formatDeviceList(locs []*libfido2.DeviceLocation) string {
 	return sb.String()
 }
 
+// webAuthnDevice is owned by one goroutine, on one OS thread. Implementations
+// must bound native communication using the supplied context's deadline. Close
+// is called by that owner only, after any in-flight native call has returned.
+type webAuthnDevice interface {
+	HasPIN() bool
+	Credentials(context.Context, string, string) ([][]byte, error)
+	Assertion(context.Context, string, []byte, [][]byte, string) (*libfido2.Assertion, error)
+	Close()
+}
+
+type webAuthnBackend struct {
+	locations func() ([]*libfido2.DeviceLocation, error)
+	open      func(context.Context, string) (webAuthnDevice, error)
+}
+
+// runDeviceInteraction bounds the caller's wait without racing libfido2's
+// non-thread-safe handles. A cancelled operation retains its handle until its
+// native timeout expires; its owner then closes it. Never call Cancel or Close
+// concurrently with native I/O, including opening the device.
+func runDeviceInteraction[T any](ctx context.Context, timeout time.Duration, operation func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	type result struct {
+		value T
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		// macOS HID handles use a thread-local CFRunLoop.
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		if err := ctx.Err(); err != nil {
+			done <- result{err: err}
+			return
+		}
+		value, err := operation(ctx)
+		done <- result{value, err}
+	}()
+	select {
+	case r := <-done:
+		if err := ctx.Err(); err != nil {
+			return *new(T), err
+		}
+		return r.value, r.err
+	case <-ctx.Done():
+		return *new(T), ctx.Err()
+	}
+}
+
 // Authenticate performs FIDO2 assertion with the connected device.
-// Returns the assertion data formatted for Keycloak submission.
-//
-//nolint:cyclop // FIDO2 device selection and assertion with multiple fallback paths
+// Timeout covers device discovery and communication, excluding PIN entry.
 func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, error) {
+	return p.authenticate(form, webAuthnBackend{
+		locations: libfido2.DeviceLocations,
+		open:      openNativeWebAuthnDevice,
+	}, p.GetPIN)
+}
+
+//nolint:cyclop // Device selection, PIN handling and assertion formatting have separate failure paths.
+func (p *WebAuthnProvider) authenticate(form *WebAuthnForm, backend webAuthnBackend, getPIN func() (string, error)) (*WebAuthnResult, error) {
 	if form == nil {
 		return nil, errors.New("webauthn form is nil")
 	}
@@ -130,68 +187,42 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		return nil, errors.New("webauthn RP ID is empty")
 	}
 
-	// Find available FIDO2 devices
-	locs, err := libfido2.DeviceLocations()
+	// Install signal handling only during device I/O. PIN entry remains an
+	// ordinary terminal prompt, with the terminal's usual interrupt behaviour.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	start := time.Now()
+	selection, err := runDeviceInteraction(ctx, p.GetTimeout(), func(ctx context.Context) (*selectedWebAuthnDevice, error) {
+		locs, err := backend.locations()
+		if err != nil {
+			return nil, fmt.Errorf("failed to enumerate FIDO2 devices: %w", err)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		path, selected, err := p.selectDevice(locs)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "Using FIDO2 device: %s (%s)\n", selected.Product, path)
+		device, err := backend.open(ctx, path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open FIDO2 device %q: %w", selected.Product, err)
+		}
+		defer device.Close()
+		return &selectedWebAuthnDevice{path: path, hasPIN: device.HasPIN()}, nil
+	})
+	stop()
+	remaining := p.GetTimeout() - time.Since(start)
 	if err != nil {
-		return nil, fmt.Errorf("failed to enumerate FIDO2 devices: %w", err)
+		return nil, webAuthnInteractionError(err)
 	}
-
-	if len(locs) == 0 {
-		if p.UseBrowser {
-			return nil, errors.New("no FIDO2 device found, browser fallback requested")
-		}
-		return nil, errors.New("no FIDO2 device found\n\n" +
-			"Note: This tool only supports USB/NFC security keys (e.g., YubiKey)\n" +
-			"macOS Touch ID and iCloud Keychain passkeys are not supported by libfido2\n\n" +
-			"Please connect a hardware security key and try again")
-	}
-
-	// Determine which device to use
-	var devicePath string
-	var selectedDevice *libfido2.DeviceLocation
-
-	switch {
-	case p.DevicePath != "":
-		// Explicit path specified
-		devicePath = p.DevicePath
-		// Find matching device for display
-		for _, loc := range locs {
-			if loc.Path == p.DevicePath {
-				selectedDevice = loc
-				break
-			}
-		}
-		if selectedDevice == nil {
-			return nil, fmt.Errorf("specified device path %q not found\n\n%s",
-				p.DevicePath, formatDeviceList(locs))
-		}
-	case p.DeviceIndex >= 0:
-		// Index-based selection
-		if p.DeviceIndex >= len(locs) {
-			return nil, fmt.Errorf("device index %d out of range (0-%d)\n\n%s",
-				p.DeviceIndex, len(locs)-1, formatDeviceList(locs))
-		}
-		selectedDevice = locs[p.DeviceIndex]
-		devicePath = selectedDevice.Path
-	default:
-		// Auto-detect: use first device, but warn if multiple available
-		selectedDevice = locs[0]
-		devicePath = selectedDevice.Path
-
-		if len(locs) > 1 {
-			fmt.Fprintf(os.Stderr, "Multiple FIDO2 devices detected. Using first device.\n")
-			fmt.Fprintf(os.Stderr, "%s", formatDeviceList(locs))
-			fmt.Fprintf(os.Stderr, "Use --webauthn-device-index N to select a specific device.\n\n")
+	var pin string
+	if selection.hasPIN {
+		pin, err = getPIN()
+		if err != nil {
+			return nil, err
 		}
 	}
-
-	fmt.Fprintf(os.Stderr, "Using FIDO2 device: %s (%s)\n", selectedDevice.Product, selectedDevice.Path)
-
-	device, err := libfido2.NewDevice(devicePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open FIDO2 device %q: %w", selectedDevice.Product, err)
-	}
-	// Note: Device doesn't have a public Close method, cleanup is handled internally
 	// Build clientDataJSON (this is what the browser creates)
 	// The origin is the authentication page's origin. It may differ from the RP
 	// ID when credentials are scoped to a parent domain.
@@ -205,17 +236,6 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	// Compute SHA-256 hash of clientDataJSON - this is what libfido2 expects
 	// The Assertion function takes clientDataHash (32 bytes), not raw challenge
 	clientDataHash := sha256.Sum256([]byte(clientDataJSON))
-
-	// Check if PIN is needed - try RetryCount which fails if PIN is set but not yet verified
-	var pin string
-	_, retryErr := device.RetryCount()
-	if retryErr == nil {
-		// Device has PIN set, we need to get it
-		pin, err = p.GetPIN()
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	// Decode credential IDs from Keycloak's authn_use_chk field (base64url encoded)
 	// This is the allowCredentials list that the browser's WebAuthn API receives
@@ -242,67 +262,48 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 		credentialIDs = append(credentialIDs, credID)
 	}
 
-	if len(credentialIDs) == 0 && pin != "" {
-		creds, credErr := device.Credentials(form.RPID, pin)
-		if credErr == nil && len(creds) > 0 {
-			for _, cred := range creds {
-				credentialIDs = append(credentialIDs, cred.ID)
-			}
+	ctx, stop = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	assertion, err := runDeviceInteraction(ctx, remaining, func(ctx context.Context) (*libfido2.Assertion, error) {
+		device, err := backend.open(ctx, selection.path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open FIDO2 device: %w", err)
 		}
-	}
-
-	fmt.Fprintln(os.Stderr, "Touch your security key...")
-
-	// Run assertion in goroutine to allow signal handling
-	type assertionResult struct {
-		assertion *libfido2.Assertion
-		err       error
-	}
-	resultChan := make(chan assertionResult, 1)
-
-	go func() {
-		assertion, err := device.Assertion(
-			form.RPID,
-			clientDataHash[:], // SHA-256 hash of clientDataJSON (32 bytes)
-			credentialIDs,     // nil for resident key discovery
-			pin,
-			&libfido2.AssertionOpts{
-				UP: libfido2.True, // Require user presence
-			},
-		)
-		resultChan <- assertionResult{assertion, err}
-	}()
-
-	// Wait for assertion or interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigChan)
-
-	var assertion *libfido2.Assertion
-	select {
-	case result := <-resultChan:
-		assertion = result.assertion
-		err = result.err
-	case <-sigChan:
-		fmt.Fprintln(os.Stderr, "\nInterrupted. Closing device...")
-		// Cancel the device operation by closing it
-		_ = device.Cancel()
-		return nil, fmt.Errorf("operation cancelled by user")
-	}
-
-	if err != nil {
-		// If assertion failed without credential IDs, suggest browser fallback
-		if len(credentialIDs) == 0 {
-			return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w\n\n"+
+		defer device.Close()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if len(credentialIDs) == 0 && pin != "" {
+			creds, err := device.Credentials(ctx, form.RPID, pin)
+			if err != nil && !errors.Is(err, errCredentialManagementUnsupported) {
+				return nil, fmt.Errorf("failed to discover FIDO2 credentials: %w", err)
+			}
+			credentialIDs = append(credentialIDs, creds...)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		fmt.Fprintln(os.Stderr, "Touch your security key...")
+		assertion, err := device.Assertion(ctx, form.RPID, clientDataHash[:], credentialIDs, pin)
+		if err != nil && len(credentialIDs) == 0 && ctx.Err() == nil {
+			return nil, fmt.Errorf("%w\n\n"+
 				"This device may not have credentials registered for %s\n"+
 				"If your passkey is stored elsewhere (e.g., iCloud Keychain, another security key),\n"+
-				"try using --browser for browser-based authentication", devicePath, err, form.RPID)
+				"try using --browser for browser-based authentication", err, form.RPID)
 		}
-		return nil, fmt.Errorf("FIDO2 assertion failed on device %q: %w", devicePath, err)
+		return assertion, err
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil, webAuthnInteractionError(err)
+		}
+		return nil, fmt.Errorf("FIDO2 authentication failed on device %q: %w", selection.path, err)
 	}
-
+	if assertion == nil {
+		return nil, errors.New("FIDO2 device returned an empty assertion")
+	}
 	// Format result for Keycloak
-	// go-libfido2 returns AuthDataCBOR which is CBOR-encoded authenticator data
+	// libfido2 returns AuthDataCBOR which is CBOR-encoded authenticator data
 	// Keycloak expects raw authenticator data (not CBOR-wrapped)
 	// The CBOR wrapper is just a byte string containing the raw authenticator data
 	var rawAuthData []byte
@@ -330,6 +331,76 @@ func (p *WebAuthnProvider) Authenticate(form *WebAuthnForm) (*WebAuthnResult, er
 	}
 
 	return result, nil
+}
+
+type selectedWebAuthnDevice struct {
+	path   string
+	hasPIN bool
+}
+
+func webAuthnInteractionError(err error) error {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("FIDO2 device interaction timed out (adjust --webauthn-timeout if needed): %w", err)
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("FIDO2 operation cancelled by user: %w", err)
+	default:
+		return err
+	}
+}
+
+//nolint:cyclop // Explicit path, index and automatic device selection.
+func (p *WebAuthnProvider) selectDevice(locs []*libfido2.DeviceLocation) (string, *libfido2.DeviceLocation, error) {
+	if len(locs) == 0 {
+		if p.UseBrowser {
+			return "", nil, errors.New("no FIDO2 device found, browser fallback requested")
+		}
+		return "", nil, errors.New("no FIDO2 device found\n\n" +
+			"Note: This tool only supports USB/NFC security keys (e.g., YubiKey)\n" +
+			"macOS Touch ID and iCloud Keychain passkeys are not supported by libfido2\n\n" +
+			"Please connect a hardware security key and try again")
+	}
+
+	// Determine which device to use
+	var devicePath string
+	var selectedDevice *libfido2.DeviceLocation
+
+	switch {
+	case p.DevicePath != "":
+		// Explicit path specified
+		devicePath = p.DevicePath
+		// Find matching device for display
+		for _, loc := range locs {
+			if loc.Path == p.DevicePath {
+				selectedDevice = loc
+				break
+			}
+		}
+		if selectedDevice == nil {
+			return "", nil, fmt.Errorf("specified device path %q not found\n\n%s",
+				p.DevicePath, formatDeviceList(locs))
+		}
+	case p.DeviceIndex >= 0:
+		// Index-based selection
+		if p.DeviceIndex >= len(locs) {
+			return "", nil, fmt.Errorf("device index %d out of range (0-%d)\n\n%s",
+				p.DeviceIndex, len(locs)-1, formatDeviceList(locs))
+		}
+		selectedDevice = locs[p.DeviceIndex]
+		devicePath = selectedDevice.Path
+	default:
+		// Auto-detect: use first device, but warn if multiple available
+		selectedDevice = locs[0]
+		devicePath = selectedDevice.Path
+
+		if len(locs) > 1 {
+			fmt.Fprintf(os.Stderr, "Multiple FIDO2 devices detected. Using first device.\n")
+			fmt.Fprintf(os.Stderr, "%s", formatDeviceList(locs))
+			fmt.Fprintf(os.Stderr, "Use --webauthn-device-index N to select a specific device.\n\n")
+		}
+	}
+
+	return devicePath, selectedDevice, nil
 }
 
 // IsWebAuthnAvailable returns true if WebAuthn support is compiled in.
