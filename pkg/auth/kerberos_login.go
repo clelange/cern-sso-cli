@@ -45,18 +45,13 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 	// Pre-populate the cookie jar with the existing cookies
 	// Set cookies via URLs matching their domains for proper jar association
 	authURL, _ := url.Parse("https://" + authHostname + "/")
-	for _, cookie := range cookies {
-		// Fix domain if missing
-		if cookie.Domain == "" {
-			cookie.Domain = u.Hostname()
+	for _, c := range cookies {
+		cookieURL := u
+		if c.Domain == authHostname || c.Domain == "."+authHostname ||
+			strings.HasSuffix(c.Domain, "."+authHostname) {
+			cookieURL = authURL
 		}
-		// Set auth cookies via auth URL, others via target URL
-		if cookie.Domain == authHostname || cookie.Domain == "."+authHostname ||
-			strings.HasSuffix(cookie.Domain, "."+authHostname) {
-			k.jar.SetCookies(authURL, []*http.Cookie{cookie})
-		} else {
-			k.jar.SetCookies(u, []*http.Cookie{cookie})
-		}
+		k.seedCookie(cookieURL, c)
 	}
 
 	// Start by accessing the target URL
@@ -115,7 +110,7 @@ func (k *KerberosClient) TryLoginWithCookies(targetURL string, authHostname stri
 				redirectURI = finalURI
 			}
 			return &LoginResult{
-				Cookies:     k.GetCookies(resp.Request.URL),
+				Cookies:     k.GetCollectedCookies(),
 				RedirectURI: redirectURI,
 				Username:    k.username,
 			}, nil

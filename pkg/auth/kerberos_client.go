@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"strings"
+	"sync"
 
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/spnego"
@@ -19,6 +21,7 @@ type KerberosClient struct {
 	krbClient        *client.Client
 	httpClient       *http.Client
 	jar              http.CookieJar
+	cookiesMu        sync.Mutex
 	collectedCookies []*http.Cookie    // Stores full cookie attributes from Set-Cookie headers
 	version          string            // Version string for User-Agent header
 	username         string            // Username for display in prompts
@@ -112,15 +115,7 @@ func (t *cookieInterceptTransport) RoundTrip(req *http.Request) (*http.Response,
 	if err != nil {
 		return resp, err
 	}
-	// Capture full cookies from Set-Cookie headers
-	cookies := resp.Cookies()
-	for _, c := range cookies {
-		// Set domain from response URL if not set in cookie
-		if c.Domain == "" {
-			c.Domain = req.URL.Hostname()
-		}
-		t.client.collectedCookies = append(t.client.collectedCookies, c)
-	}
+	t.client.recordResponseCookies(req.URL, resp.Cookies())
 	return resp, nil
 }
 
@@ -150,7 +145,7 @@ func (k *KerberosClient) GetHTTPClient() *http.Client {
 	return k.httpClient
 }
 
-// GetCookies returns all cookies from the jar for a given URL.
+// GetCookies returns request cookies for a given URL, without persistence attributes.
 // It ensures the Domain field is populated if empty (Go's cookiejar doesn't populate it).
 func (k *KerberosClient) GetCookies(u *url.URL) []*http.Cookie {
 	cookies := k.jar.Cookies(u)
@@ -162,17 +157,23 @@ func (k *KerberosClient) GetCookies(u *url.URL) []*http.Cookie {
 	return cookies
 }
 
-// GetCollectedCookies returns all cookies collected during the session with full attributes.
+// GetCollectedCookies returns the latest cookies from every domain in this session.
+// It includes deletion markers so persistence can remove cookies from earlier sessions.
 func (k *KerberosClient) GetCollectedCookies() []*http.Cookie {
-	// Deduplicate by domain+path+name, keeping the latest
-	seen := make(map[string]*http.Cookie)
+	k.cookiesMu.Lock()
+	defer k.cookiesMu.Unlock()
+
+	// A leading dot indicates subdomain scope, but is not part of a cookie's identity.
+	type cookieKey struct{ domain, path, name string }
+	seen := make(map[cookieKey]*http.Cookie)
 	for _, c := range k.collectedCookies {
-		key := c.Domain + c.Path + c.Name
+		key := cookieKey{strings.TrimPrefix(c.Domain, "."), c.Path, c.Name}
 		seen[key] = c
 	}
 	result := make([]*http.Cookie, 0, len(seen))
 	for _, c := range seen {
-		result = append(result, c)
+		copy := *c
+		result = append(result, &copy)
 	}
 	return result
 }
@@ -199,6 +200,11 @@ func (k *KerberosClient) DoSPNEGORequest(req *http.Request) (*http.Response, err
 // This uses cookies intercepted from Set-Cookie headers during the authentication flow,
 // which preserves the original Path and Domain attributes.
 func (k *KerberosClient) CollectCookies(targetURL string, authHostname string, result *LoginResult) ([]*http.Cookie, error) {
+	// Successful HTTP and browser logins already provide full cookie attributes.
+	if len(result.Cookies) > 0 {
+		return result.Cookies, nil
+	}
+
 	// Make a final request to the target to collect any remaining cookies
 	if result.RedirectURI != "" {
 		resp, err := k.httpClient.Get(result.RedirectURI)

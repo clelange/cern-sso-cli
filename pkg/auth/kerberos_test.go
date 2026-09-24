@@ -272,9 +272,11 @@ func TestTryLoginWithCookies_DomainFixing(t *testing.T) {
 		t.Error("Expected non-nil result on success")
 	}
 
-	// Verify the domain was fixed
-	if cookiesWithoutDomain[0].Domain == "" {
-		t.Error("Expected cookie domain to be fixed (populated)")
+	// The returned cookie gets its domain without mutating the caller's slice.
+	if len(result.Cookies) != 1 || result.Cookies[0].Domain == "" {
+		t.Fatal("expected result cookie domain to be populated")
 	}
-	t.Logf("Cookie domain fixed to: %s", cookiesWithoutDomain[0].Domain)
+	if cookiesWithoutDomain[0].Domain != "" {
+		t.Fatal("input cookie domain was modified")
+	}
 }
