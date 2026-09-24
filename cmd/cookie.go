@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -82,15 +83,6 @@ func runCookie(cmd *cobra.Command, args []string) error {
 	// If force refresh is requested, skip validation and authenticate
 	if cookieForce {
 		logPrintln("Force refresh requested. Authenticating regardless of existing cookies...")
-		// Clean up expired cookies before authentication
-		jar, err := cookie.NewJar()
-		if err != nil {
-			logInfo("Warning: Failed to create cookie jar: %v\n", err)
-		} else {
-			if err := jar.Update(cookieFile, nil, targetDomain); err != nil {
-				logInfo("Warning: Failed to cleanup cookies: %v\n", err)
-			}
-		}
 		return authenticateWithKerberos(cookieURL, cookieFile, cookieAuthHost, cookieInsecure)
 	}
 
@@ -102,7 +94,10 @@ func runCookie(cmd *cobra.Command, args []string) error {
 			logInfo("Found %d auth.cern.ch cookies, attempting to use them...\n", len(authCookies))
 			if ok, result, client := tryAuthCookies(cookieURL, cookieAuthHost, authCookies, cookieInsecure); ok {
 				logPrintln("Existing auth cookies worked. Skipping Kerberos authentication.")
-				output := saveCookiesFromAuth(client, cookieFile, cookieURL, cookieAuthHost, result)
+				output, err := saveCookiesFromAuth(client, cookieFile, cookieURL, cookieAuthHost, result)
+				if err != nil {
+					return err
+				}
 				return printCookieOutput(output)
 			}
 			logPrintln("Auth cookies invalid or expired, falling back to Kerberos...")
@@ -122,12 +117,11 @@ func runCookie(cmd *cobra.Command, args []string) error {
 				logInfo("Existing cookies are valid for another %v. Reusing them.\n", formatDuration(duration))
 				jar, err := cookie.NewJar()
 				if err != nil {
-					logInfo("Warning: Failed to create cookie jar: %v\n", err)
-					return nil
+					return fmt.Errorf("failed to create cookie jar: %w", err)
 				}
 				// Clean up expired ones
 				if err := jar.Update(cookieFile, nil, targetDomain); err != nil {
-					logInfo("Warning: Failed to cleanup cookies: %v\n", err)
+					return fmt.Errorf("failed to update cookie file %s: %w", cookieFile, err)
 				}
 				return printCookieOutput(&CookieOutput{
 					File:  cookieFile,
@@ -161,8 +155,14 @@ func tryAuthCookies(targetURL, authHost string, cookies []*http.Cookie, insecure
 	return true, result, kerbClient
 }
 
+type cookieSession interface {
+	CollectCookies(targetURL, authHost string, result *auth.LoginResult) ([]*http.Cookie, error)
+	Close()
+}
+
 // saveCookiesFromAuth collects and saves cookies from a successful authentication.
-func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authHost string, result *auth.LoginResult) *CookieOutput {
+func saveCookiesFromAuth(client cookieSession, filename, targetURL, authHost string, result *auth.LoginResult) (*CookieOutput, error) {
+	defer client.Close()
 	logPrintln("Collecting cookies...")
 
 	var cookies []*http.Cookie
@@ -176,18 +176,19 @@ func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authH
 		cookies, err = client.CollectCookies(targetURL, authHost, result)
 	}
 
-	client.Close()
 	if err != nil {
-		logInfo("Warning: Failed to collect cookies: %v\n", err)
-		return nil
+		return nil, fmt.Errorf("failed to collect cookies: %w", err)
 	}
 
-	u, _ := url.Parse(targetURL)
-	logInfo("Saving %d cookies to %s\n", len(cookies), filename)
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cookie target URL: %w", err)
+	}
+	count := activeCookieCount(cookies)
+	logInfo("Saving %d cookies to %s\n", count, filename)
 	jar, err := cookie.NewJar()
 	if err != nil {
-		logInfo("Warning: Failed to create cookie jar: %v\n", err)
-		return nil
+		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
 	}
 
 	// Use username from the login result, or fall back to krbUser
@@ -198,16 +199,27 @@ func saveCookiesFromAuth(client *auth.KerberosClient, filename, targetURL, authH
 	username = normalizeUsername(username)
 
 	if err := jar.UpdateWithUser(filename, cookies, u.Hostname(), username); err != nil {
-		logInfo("Warning: Failed to save cookies: %v\n", err)
-		return nil
+		return nil, fmt.Errorf("failed to save cookies to %s: %w", filename, err)
 	}
 
 	logPrintln("Done!")
 	return &CookieOutput{
 		File:  filename,
-		Count: len(cookies),
+		Count: count,
 		User:  username,
+	}, nil
+}
+
+// activeCookieCount excludes deletion records and cookies that expired during login.
+func activeCookieCount(cookies []*http.Cookie) int {
+	now := time.Now()
+	count := 0
+	for _, c := range cookies {
+		if c.MaxAge > 0 || (c.MaxAge == 0 && (c.Expires.IsZero() || c.Expires.After(now))) {
+			count++
+		}
 	}
+	return count
 }
 
 // printCookieOutput prints the cookie output, as JSON if --json flag is set.
@@ -225,6 +237,9 @@ func authenticateWithKerberos(targetURL, filename, authHost string, insecure boo
 		return err
 	}
 
-	output := saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result)
+	output, err := saveCookiesFromAuth(kerbClient, filename, targetURL, authHost, result)
+	if err != nil {
+		return err
+	}
 	return printCookieOutput(output)
 }

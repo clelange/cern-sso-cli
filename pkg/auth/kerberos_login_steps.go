@@ -709,7 +709,7 @@ func (f *kerberosLoginFlow) successResult(resp *http.Response) *LoginResult {
 	}
 
 	return &LoginResult{
-		Cookies:     f.client.GetCookies(resp.Request.URL),
+		Cookies:     f.client.GetCollectedCookies(),
 		RedirectURI: f.redirectURI,
 		Username:    f.client.username,
 	}
