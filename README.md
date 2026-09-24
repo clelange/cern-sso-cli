@@ -321,6 +321,8 @@ cern-sso-cli cookie --browser --url https://gitlab.cern.ch
 #### Hardware Keys (Headless)
 **Important**: Native hardware key support uses `libfido2`, which only supports USB/NFC security keys (e.g., YubiKey).
 
+`--webauthn-timeout` limits the total time spent discovering and communicating with a hardware key (30 seconds by default); time spent entering its PIN is excluded. Timeouts and interrupts discard the authentication result without retrying the PIN or assertion. An interrupt returns immediately, while an active native operation retains its device handle until its configured timeout and then closes it safely. Device enumeration is provided by the operating system: the caller's wait is bounded, but an enumeration already in progress must finish before its worker exits.
+
 **List available devices:**
 ```bash
 cern-sso-cli webauthn list
