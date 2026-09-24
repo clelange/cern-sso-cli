@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.3](https://github.com/clelange/cern-sso-cli/compare/v0.32.2...v0.32.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* bound hardware WebAuthn interactions and preserve device errors ([76f0638](https://github.com/clelange/cern-sso-cli/commit/76f063882441ec0cc5c060331f39387016e03a87))
+* **cookie:** preserve and securely persist complete sessions ([fc64e2c](https://github.com/clelange/cern-sso-cli/commit/fc64e2cc9ab3f122ece9e04ea28c49b38ae9517d))
+
 ## [0.32.2](https://github.com/clelange/cern-sso-cli/compare/v0.32.1...v0.32.2) (2026-07-16)
 
 
