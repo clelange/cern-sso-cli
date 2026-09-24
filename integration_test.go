@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/clelange/cern-sso-cli/pkg/auth"
 	"github.com/clelange/cern-sso-cli/pkg/cookie"
@@ -516,8 +517,7 @@ func TestIntegration_HarborCLISecret(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("Failed to fetch user profile (status %d): %s", resp.StatusCode, string(body))
+		t.Fatalf("Failed to fetch user profile (status %d)", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -528,7 +528,7 @@ func TestIntegration_HarborCLISecret(t *testing.T) {
 	// Check that we got a valid user profile with CLI secret
 	bodyStr := string(body)
 	if !strings.Contains(bodyStr, "user_id") {
-		t.Errorf("Response doesn't contain user_id: %s", bodyStr[:min(500, len(bodyStr))])
+		t.Error("Response doesn't contain user_id")
 	}
 	if !strings.Contains(bodyStr, "oidc_user_meta") {
 		t.Logf("Warning: No oidc_user_meta in response, may not have CLI secret")
@@ -537,8 +537,7 @@ func TestIntegration_HarborCLISecret(t *testing.T) {
 	t.Logf("Successfully authenticated to Harbor and fetched user profile")
 }
 
-// TestIntegration_OpenShiftToken tests the openshift command to get API token.
-// This tests the actual CLI functionality that fetches the OpenShift token.
+// TestIntegration_OpenShiftToken verifies authenticated access to the OpenShift token page.
 func TestIntegration_OpenShiftToken(t *testing.T) {
 	skipIfNoCredentials(t)
 
@@ -572,7 +571,7 @@ func TestIntegration_OpenShiftToken(t *testing.T) {
 
 	// Now fetch the token request page using these cookies
 	httpJar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: httpJar}
+	client := &http.Client{Jar: httpJar, Timeout: 30 * time.Second}
 
 	// Set cookies on the jar for auth.cern.ch
 	authURL, _ := url.Parse("https://auth.cern.ch")
@@ -593,29 +592,17 @@ func TestIntegration_OpenShiftToken(t *testing.T) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("Failed to fetch token request page: %v", err)
+		t.Fatal("Failed to fetch OpenShift token page")
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("Failed to fetch token request page (status %d): %s", resp.StatusCode, string(body))
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("Failed to read response: %v", err)
+		t.Fatal("Failed to read OpenShift token page response")
 	}
 
-	bodyStr := string(body)
-
-	// Check for form or token in the response
-	if strings.Contains(bodyStr, "Display Token") || strings.Contains(bodyStr, "sha256~") || strings.Contains(bodyStr, "oc login") {
-		t.Logf("Successfully reached OpenShift token request page")
-	} else if strings.Contains(bodyStr, "Sign in to CERN") {
-		t.Skip("Redirected to CERN SSO - cookies may not have been applied correctly")
-	} else {
-		t.Logf("Response preview: %s", bodyStr[:min(500, len(bodyStr))])
+	if err := validateOpenShiftTokenPage(resp, string(body), oauthURL.Host); err != nil {
+		t.Fatalf("OpenShift token page authentication failed: %v", err)
 	}
 
 	t.Logf("Successfully authenticated to OpenShift OAuth endpoint at %s", clusterURL)
@@ -659,8 +646,7 @@ func verifyCookiesIntegration(t *testing.T, cookieFile, targetURL, expectedTitle
 	titleStart := strings.Index(body, "<title>")
 	titleEnd := strings.Index(body, "</title>")
 	if titleStart == -1 || titleEnd == -1 || titleEnd <= titleStart {
-		t.Errorf("Could not find <title> tag in response. First 500 chars: %s",
-			body[:min(500, len(body))])
+		t.Error("Could not find <title> tag in response")
 		return
 	}
 
