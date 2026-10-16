@@ -118,14 +118,13 @@ func authenticateWithChrome(parent context.Context, targetURL, authHostname stri
 			`div.kc-social-provider-list > a[id="zocial-kerberos"]`,
 		}
 
-		for _, selector := range selectors {
-			if err := chromedp.Do(clickCtx,
-				chromedp.WaitVisible(chromedp.CSS(selector)),
-				chromedp.Click(chromedp.CSS(selector)),
-			); err == nil {
-				break
-			}
-		}
+		// Wait for any supported button so an absent selector cannot exhaust
+		// the shared timeout before the fallback selectors are checked.
+		selector := chromedp.CSS(strings.Join(selectors, ", "))
+		_ = chromedp.Do(clickCtx,
+			chromedp.WaitVisible(selector),
+			chromedp.Click(selector),
+		)
 	}()
 
 	// Wait for authentication to complete

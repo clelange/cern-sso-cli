@@ -22,6 +22,21 @@ import (
 // These tests require Chrome and fail if it is missing. They use local servers
 // and an isolated profile, without CERN credentials or WebAuthn hardware.
 func TestBrowserIntegration_Authenticate(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		button string
+	}{
+		{"CERN", `<a id="social-kerberos" href="/kerberos">Kerberos</a>`},
+		{"legacy", `<a id="zocial-kerberos" href="/kerberos">Kerberos</a>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testBrowserAuthentication(t, tc.button)
+		})
+	}
+}
+
+func testBrowserAuthentication(t *testing.T, button string) {
+	t.Helper()
 	expires := time.Now().Add(time.Hour).Truncate(time.Second)
 	var authURL string
 	targetMux := http.NewServeMux()
@@ -48,7 +63,7 @@ func TestBrowserIntegration_Authenticate(t *testing.T) {
 	// Different hostnames exercise extraction of cookies from both domains.
 	authURL = strings.Replace(authServer.URL, "127.0.0.1", "localhost", 1)
 	authMux.HandleFunc("/login", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `<html><body><a id="social-kerberos" href="/kerberos">Kerberos</a></body></html>`)
+		fmt.Fprintf(w, "<html><body>%s</body></html>", button)
 	})
 	authMux.HandleFunc("/kerberos", func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
