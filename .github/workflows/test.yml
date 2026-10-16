@@ -57,6 +57,9 @@ jobs:
         CGO_ENABLED: '0'
       run: go test -tags nowebauthn ./...
 
+    - name: Run Chrome integration tests against local servers
+      run: go test -race -tags browserintegration -run '^TestBrowserIntegration_' -count=1 -timeout=2m -v ./pkg/browser
+
     - name: Run macOS keychain integration tests
       if: runner.os == 'macOS'
       run: go test -tags=integration -v ./pkg/auth/ -run 'TestIntegration_Keychain'

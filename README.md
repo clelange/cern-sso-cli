@@ -512,6 +512,23 @@ source <(cern-sso-cli completion bash)
 source <(cern-sso-cli completion zsh)
 ```
 
+## Development Tests
+
+Run the unit tests with `go test -race ./...`, or use
+`CGO_ENABLED=0 go test -tags nowebauthn ./...` for the portable build.
+
+The browser integration tests require Chrome or Chromium and fail if it is
+missing. They use local servers and isolated browser profiles, without CERN
+credentials or WebAuthn hardware. CI runs them on Linux and macOS:
+
+```bash
+go test -race -tags browserintegration -run '^TestBrowserIntegration_' -count=1 -timeout=2m -v ./pkg/browser
+```
+
+Set `CHROME_PATH` to use a specific browser executable. Set
+`CERN_SSO_TEST_VISIBLE_BROWSER=1` to run these fixtures with visible windows for a
+manual startup check. Real CERN login and Touch ID still need an interactive check.
+
 ## Comparison to Python Version
 This is a Go port of [auth-get-sso-cookie](https://gitlab.cern.ch/authzsvc/tools/auth-get-sso-cookie).
 
