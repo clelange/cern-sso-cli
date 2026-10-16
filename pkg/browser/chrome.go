@@ -3,10 +3,12 @@ package browser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,16 +30,16 @@ type AuthResult struct {
 // The function waits until the browser navigates away from the auth hostname,
 // indicating successful authentication.
 // env is a map of environment variables to set for the browser process (e.g. KRB5CCNAME).
-//
-//nolint:cyclop // Complex browser automation with event handling and cookie extraction
 func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.Duration, env map[string]string) (*AuthResult, error) {
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	return authenticateWithChrome(context.Background(), targetURL, authHostname, timeout, chromeAllocatorOptions(env, true))
+}
 
-	// Create Chrome options for a visible browser window
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", false),          // Show browser window
+func chromeAllocatorOptions(env map[string]string, visible bool) []chromedp.ExecAllocatorOption {
+	opts := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
+	if visible {
+		opts = append(opts, chromedp.VisibleWindow)
+	}
+	opts = append(opts,
 		chromedp.Flag("disable-gpu", false),       // Enable GPU for better UI
 		chromedp.Flag("start-maximized", false),   // Normal window size
 		chromedp.WindowSize(1024, 768),            // Set reasonable size
@@ -49,32 +51,23 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 		chromedp.Flag("auth-negotiate-delegate-allowlist", "auth.cern.ch,login.cern.ch,*.cern.ch"),
 	)
 
-	// Handle environment variables
-	// IMPORTANT: chromedp.Env REPLACES the process environment if set.
-	// We must merge with os.Environ() to ensure Chrome inherits the system environment (PATH, HOME, etc.)
+	// Env inherits the process environment and applies these overrides, including
+	// KRB5CCNAME when authentication uses a specific Kerberos credential cache.
 	if len(env) > 0 {
-		// Parse current environment into a map
-		fullEnv := make(map[string]string)
-		for _, e := range os.Environ() {
-			parts := strings.SplitN(e, "=", 2)
-			if len(parts) == 2 {
-				fullEnv[parts[0]] = parts[1]
-			}
-		}
-
-		// Apply overrides
+		envSlice := make([]string, 0, len(env))
 		for k, v := range env {
-			fullEnv[k] = v
-		}
-
-		// Convert back to slice
-		envSlice := make([]string, 0, len(fullEnv))
-		for k, v := range fullEnv {
 			envSlice = append(envSlice, k+"="+v)
 		}
 
 		opts = append(opts, chromedp.Env(envSlice...))
 	}
+	return opts
+}
+
+//nolint:cyclop // Browser automation coordinates navigation, authentication and cookie extraction.
+func authenticateWithChrome(parent context.Context, targetURL, authHostname string, timeout time.Duration, opts []chromedp.ExecAllocatorOption) (*AuthResult, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, opts...)
 	defer allocCancel()
@@ -95,7 +88,7 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 
 	// Navigate to target URL
 	var currentURL string
-	err := chromedp.Run(browserCtx,
+	err := chromedp.Do(browserCtx,
 		chromedp.Navigate(targetURL),
 	)
 	if err != nil {
@@ -106,11 +99,14 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 
 	// Automate Kerberos button click if present
 	// This helps for users who have a valid Kerberos ticket in their system ccache
+	clickCtx, clickCancel := context.WithTimeout(browserCtx, 5*time.Second)
+	clickDone := make(chan struct{})
+	defer func() {
+		clickCancel()
+		<-clickDone
+	}()
 	go func() {
-		// Try to find and click the Kerberos button
-		// Give it a few seconds to appear
-		ctx, cancel := context.WithTimeout(browserCtx, 5*time.Second)
-		defer cancel()
+		defer close(clickDone)
 
 		// Common selectors for Keycloak Kerberos button
 		selectors := []string{
@@ -123,9 +119,9 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 		}
 
 		for _, selector := range selectors {
-			if err := chromedp.Run(ctx,
-				chromedp.WaitVisible(selector, chromedp.ByQuery),
-				chromedp.Click(selector, chromedp.ByQuery),
+			if err := chromedp.Do(clickCtx,
+				chromedp.WaitVisible(chromedp.CSS(selector)),
+				chromedp.Click(chromedp.CSS(selector)),
 			); err == nil {
 				break
 			}
@@ -136,8 +132,8 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 	// We consider auth complete when:
 	// 1. URL is on the target domain (not auth hostname)
 	// 2. URL has stopped changing (stabilized)
-	err = chromedp.Run(browserCtx,
-		chromedp.ActionFunc(func(ctx context.Context) error {
+	err = chromedp.Do(browserCtx,
+		chromedp.Func(func(ctx context.Context, _ *chromedp.Target) error {
 			ticker := time.NewTicker(500 * time.Millisecond)
 			defer ticker.Stop()
 
@@ -158,9 +154,11 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 					return ctx.Err()
 				case <-ticker.C:
 					// Get current URL
-					if err := chromedp.Location(&currentURL).Do(ctx); err != nil {
+					location, err := chromedp.Run(ctx, chromedp.Location())
+					if err != nil {
 						continue // Ignore transient errors
 					}
+					currentURL = location
 
 					// Check we're not on a blank page
 					if strings.HasPrefix(currentURL, "about:") || strings.HasPrefix(currentURL, "chrome:") {
@@ -205,8 +203,8 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 		}),
 	)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("authentication timed out after %v", timeout)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("authentication timed out after %v: %w", timeout, err)
 		}
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
@@ -215,9 +213,9 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 	// Need a significant wait for OIDC flows - cookies are set during HTTP redirects
 	fmt.Fprintln(os.Stderr, "Waiting for cookies to be set...")
 
-	err = chromedp.Run(browserCtx,
+	err = chromedp.Do(browserCtx,
 		// Wait for DOM to be ready
-		chromedp.WaitReady("body", chromedp.ByQuery),
+		chromedp.WaitReady(chromedp.CSS("body")),
 		// Then wait a short time for all cookies to be set
 		chromedp.Sleep(1*time.Second),
 	)
@@ -229,8 +227,6 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 
 	// Extract all cookies using network.GetCookies with explicit URLs
 	// This ensures we get cookies for all relevant domains
-	var cdpCookies []*network.Cookie
-
 	// Build list of URLs to get cookies for
 	// Use the authHostname parameter instead of hardcoded values
 	authURL := fmt.Sprintf("https://%s/", authHostname)
@@ -249,19 +245,11 @@ func AuthenticateWithChrome(targetURL string, authHostname string, timeout time.
 		}
 	}
 
-	err = chromedp.Run(browserCtx,
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			cookies, err := network.GetCookies().WithURLs(cookieURLs).Do(ctx)
-			if err != nil {
-				return err
-			}
-			cdpCookies = cookies
-			return nil
-		}),
-	)
+	cookieResult, err := chromedp.Call(browserCtx, network.GetCookies, network.GetCookiesParams{URLs: cookieURLs})
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract cookies: %w", err)
 	}
+	cdpCookies := cookieResult.Cookies
 
 	// Convert CDP cookies to http.Cookie
 	httpCookies := make([]*http.Cookie, 0, len(cdpCookies))

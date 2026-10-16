@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    groups:
+      chromedp:
+        patterns:
+          - "github.com/chromedp/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
