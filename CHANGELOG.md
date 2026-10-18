@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.4](https://github.com/clelange/cern-sso-cli/compare/v0.32.3...v0.32.4) (2026-10-16)
+
+
+### Bug Fixes
+
+* migrate Chrome authentication to typed browser APIs ([#161](https://github.com/clelange/cern-sso-cli/issues/161)) ([9584510](https://github.com/clelange/cern-sso-cli/commit/95845108b1d9b514863a55b765545ca11fe03f17))
+
 ## [0.32.3](https://github.com/clelange/cern-sso-cli/compare/v0.32.2...v0.32.3) (2026-09-24)
 
 
