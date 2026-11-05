@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/chromedp/cdproto v0.158.3
 	github.com/chromedp/chromedp v0.21.0
-	github.com/fxamacker/cbor/v2 v2.9.6
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
 	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394
 	github.com/spf13/cobra v1.10.2
