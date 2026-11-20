@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.5](https://github.com/clelange/cern-sso-cli/compare/v0.32.4...v0.32.5) (2026-11-20)
+
+
+### Bug Fixes
+
+* link macOS WebAuthn against Homebrew libraries ([#171](https://github.com/clelange/cern-sso-cli/issues/171)) ([b69de98](https://github.com/clelange/cern-sso-cli/commit/b69de98a0591521d836e1b96f8c0bf8520efecf9))
+
 ## [0.32.4](https://github.com/clelange/cern-sso-cli/compare/v0.32.3...v0.32.4) (2026-10-16)
 
 
