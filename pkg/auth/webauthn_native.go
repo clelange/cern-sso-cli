@@ -3,8 +3,7 @@
 package auth
 
 /*
-#cgo darwin,arm64 CFLAGS: -I/opt/homebrew/opt/libfido2/include -I/opt/homebrew/opt/openssl@3/include
-#cgo darwin,amd64 CFLAGS: -I/usr/local/opt/libfido2/include -I/usr/local/opt/openssl@3/include
+#cgo darwin pkg-config: libfido2
 #include <fido.h>
 #include <fido/credman.h>
 #include <stdlib.h>

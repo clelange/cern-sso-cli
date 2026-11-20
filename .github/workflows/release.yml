@@ -51,7 +51,7 @@ jobs:
 
       - name: Install libfido2 (macOS)
         if: runner.os == 'macOS'
-        run: brew install libfido2
+        run: brew install libfido2 pkgconf
 
       - name: Build WebAuthn binaries (Linux)
         if: contains(matrix.build_webauthn, 'linux-')

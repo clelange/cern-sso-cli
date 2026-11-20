@@ -16,6 +16,8 @@ jobs:
             name: test
           - os: macos-latest
             name: test-macos
+          - os: macos-15-intel
+            name: test-macos-intel
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v7
@@ -34,7 +36,7 @@ jobs:
 
     - name: Install libfido2 on macOS
       if: runner.os == 'macOS'
-      run: brew install libfido2
+      run: brew install libfido2 pkgconf
 
     - name: Install dependencies
       run: go mod download
@@ -259,7 +261,7 @@ jobs:
       run: make download-certs
 
     - name: Install libfido2 (WebAuthn support)
-      run: brew install libfido2
+      run: brew install libfido2 pkgconf
 
     - name: Configure Kerberos
       run: |
