@@ -11,7 +11,7 @@ LDFLAGS = -X main.version=$(VERSION)
 all: build
 
 # Default build with WebAuthn support (requires libfido2)
-# Install: macOS: brew install libfido2 | Linux: apt install libfido2-dev
+# Install: macOS: brew install libfido2 pkgconf | Linux: apt install libfido2-dev
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 

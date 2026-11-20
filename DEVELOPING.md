@@ -6,6 +6,8 @@ This guide is for contributors who want to build, test, and develop cern-sso-cli
 
 - Go 1.26 or later
 - Make
+- Native WebAuthn libraries: `brew install libfido2 pkgconf` on macOS, or
+  `sudo apt install libfido2-dev` on Debian/Ubuntu
 - Docker (for container builds, optional)
 
 ## Pre-commit Hooks
@@ -250,7 +252,7 @@ go build -o cern-sso-cli .
 
 ### Platform-Specific Builds
 
-- **macOS**: `brew install libfido2` then `go build -o cern-sso-cli .`
+- **macOS**: `brew install libfido2 pkgconf` then `go build -o cern-sso-cli .`
 - **Linux**: `sudo apt install libfido2-dev` then `CGO_ENABLED=1 go build -o cern-sso-cli .`
 
 ### Build Options Summary
