@@ -4,8 +4,8 @@ go 1.26.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.14.0
-	github.com/chromedp/cdproto v0.160.3
-	github.com/chromedp/chromedp v0.23.1
+	github.com/chromedp/cdproto v0.160.8
+	github.com/chromedp/chromedp v0.24.0
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
 	github.com/keys-pub/go-libfido2 v1.5.4-0.20230628153049-536daffdd394
